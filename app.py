@@ -521,6 +521,14 @@ st.title("📊 Derivatives Data Analysis Tool")
 if 'data' not in st.session_state:
     st.session_state['data'] = load_database()
 
+# Show storage mode indicator in sidebar
+st.sidebar.markdown("---")
+if st.session_state.get('use_cloud_db', False):
+    st.sidebar.success("☁️ **Cloud Mode**: Google Sheets")
+else:
+    st.sidebar.warning("💾 **Local Mode**: CSV File")
+st.sidebar.markdown("---")
+
 # Show status of database
 if not st.session_state['data'].empty:
     latest_db_date = st.session_state['data']['Date'].max().date()
