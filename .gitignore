@@ -1,0 +1,34 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+~$*
+
+# Local data files (created fresh on cloud)
+derivative_data_db.csv
+
+# Excel temp files
+~$*.xlsx
+~$*.xls
+
+# Logs
+*.log
+
+# Secrets - NEVER commit these!
+.streamlit/secrets.toml
+
+# Keep the template but not actual secrets
+!secrets.template.toml
