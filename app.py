@@ -7,40 +7,85 @@ from datetime import timedelta
 
 # --- CONFIGURATION ---
 DB_FILE = 'derivative_data_db.csv'  # Local fallback file
-USE_CLOUD_DB = False  # Will be set to True if Google Sheets credentials are available
 
 # Try to import Google Sheets libraries (for cloud deployment)
 try:
     from google.oauth2.service_account import Credentials
     import gspread
     GSHEETS_AVAILABLE = True
+    print("✅ Google Sheets libraries loaded successfully")
 except ImportError:
     GSHEETS_AVAILABLE = False
+    print("⚠️ Google Sheets libraries not available")
 
 st.set_page_config(page_title="Derivatives Analysis Tool", layout="wide")
 
+# --- CHECK FOR CLOUD DEPLOYMENT ---
+def is_cloud_deployment():
+    """Check if we're running on Streamlit Cloud with secrets configured."""
+    try:
+        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+            print("✅ Streamlit secrets detected")
+            return True
+        print("⚠️ No Streamlit secrets found")
+        return False
+    except Exception as e:
+        print(f"⚠️ Error checking secrets: {e}")
+        return False
+
+# Initialize session state for cloud mode
+if 'use_cloud_db' not in st.session_state:
+    st.session_state['use_cloud_db'] = is_cloud_deployment() and GSHEETS_AVAILABLE
+
 # --- GOOGLE SHEETS FUNCTIONS ---
 
+@st.cache_resource
 def get_google_sheets_client():
     """Initialize Google Sheets client using Streamlit secrets."""
     try:
         if not GSHEETS_AVAILABLE:
+            print("❌ gspread not available")
             return None
         
-        # Check if secrets are configured (Streamlit Cloud)
-        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
-            credentials = Credentials.from_service_account_info(
-                st.secrets["gcp_service_account"],
-                scopes=[
-                    "https://www.googleapis.com/auth/spreadsheets",
-                    "https://www.googleapis.com/auth/drive"
-                ]
-            )
-            client = gspread.authorize(credentials)
-            return client
-        return None
+        if not hasattr(st, 'secrets') or 'gcp_service_account' not in st.secrets:
+            print("❌ No gcp_service_account in secrets")
+            return None
+        
+        credentials = Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"],
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+        )
+        client = gspread.authorize(credentials)
+        print("✅ Google Sheets client authorized successfully")
+        return client
     except Exception as e:
-        st.warning(f"Google Sheets not configured: {e}")
+        print(f"❌ Error creating Google Sheets client: {e}")
+        st.error(f"Google Sheets connection failed: {e}")
+        return None
+
+def get_or_create_spreadsheet(client):
+    """Get or create the spreadsheet."""
+    try:
+        spreadsheet_name = st.secrets.get("spreadsheet_name", "DerivativesDB")
+        
+        try:
+            spreadsheet = client.open(spreadsheet_name)
+            print(f"✅ Opened existing spreadsheet: {spreadsheet_name}")
+        except gspread.SpreadsheetNotFound:
+            spreadsheet = client.create(spreadsheet_name)
+            print(f"✅ Created new spreadsheet: {spreadsheet_name}")
+            
+            # Share with user if email provided
+            if 'share_email' in st.secrets:
+                spreadsheet.share(st.secrets['share_email'], perm_type='user', role='writer')
+                print(f"✅ Shared spreadsheet with: {st.secrets['share_email']}")
+        
+        return spreadsheet
+    except Exception as e:
+        print(f"❌ Error with spreadsheet: {e}")
         return None
 
 def load_from_google_sheets():
@@ -50,25 +95,26 @@ def load_from_google_sheets():
         if client is None:
             return None
         
-        # Open the spreadsheet by name (configured in secrets)
-        spreadsheet_name = st.secrets.get("spreadsheet_name", "DerivativesDB")
-        spreadsheet = client.open(spreadsheet_name)
-        worksheet = spreadsheet.sheet1
+        spreadsheet = get_or_create_spreadsheet(client)
+        if spreadsheet is None:
+            return None
         
-        # Get all data as DataFrame
+        worksheet = spreadsheet.sheet1
         data = worksheet.get_all_records()
+        
         if not data:
+            print("📊 Google Sheet is empty")
             return pd.DataFrame()
         
         df = pd.DataFrame(data)
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'])
+        
+        print(f"✅ Loaded {len(df)} rows from Google Sheets")
         return df
-    except gspread.SpreadsheetNotFound:
-        # Create new spreadsheet if it doesn't exist
-        st.info("Creating new Google Sheets database...")
-        return pd.DataFrame()
+        
     except Exception as e:
+        print(f"❌ Error loading from Google Sheets: {e}")
         st.error(f"Error loading from Google Sheets: {e}")
         return None
 
@@ -77,79 +123,72 @@ def save_to_google_sheets(df):
     try:
         client = get_google_sheets_client()
         if client is None:
+            print("❌ No client for saving")
             return False
         
-        spreadsheet_name = st.secrets.get("spreadsheet_name", "DerivativesDB")
-        
-        try:
-            spreadsheet = client.open(spreadsheet_name)
-        except gspread.SpreadsheetNotFound:
-            # Create new spreadsheet
-            spreadsheet = client.create(spreadsheet_name)
-            # Share with yourself (optional - get email from secrets)
-            if 'share_email' in st.secrets:
-                spreadsheet.share(st.secrets['share_email'], perm_type='user', role='writer')
+        spreadsheet = get_or_create_spreadsheet(client)
+        if spreadsheet is None:
+            return False
         
         worksheet = spreadsheet.sheet1
         
         # Convert DataFrame to list of lists
         df_copy = df.copy()
-        # Convert datetime to string for Google Sheets
         if 'Date' in df_copy.columns:
             df_copy['Date'] = df_copy['Date'].astype(str)
         
-        # Clear existing data and write new
+        # Clear and write
         worksheet.clear()
         
-        # Write headers
+        # Write headers first
         headers = df_copy.columns.tolist()
         worksheet.append_row(headers)
         
-        # Write data in batches (Google Sheets API limit)
+        # Write data in batches
         data_rows = df_copy.values.tolist()
-        batch_size = 500
-        for i in range(0, len(data_rows), batch_size):
-            batch = data_rows[i:i+batch_size]
-            worksheet.append_rows(batch)
+        if len(data_rows) > 0:
+            # Use batch update for better performance
+            worksheet.append_rows(data_rows)
         
+        print(f"✅ Saved {len(df)} rows to Google Sheets")
         return True
+        
     except Exception as e:
+        print(f"❌ Error saving to Google Sheets: {e}")
         st.error(f"Error saving to Google Sheets: {e}")
         return False
 
-# --- LOCAL DATABASE FUNCTIONS ---
+# --- DATABASE FUNCTIONS ---
 
 def load_database():
     """Loads the historical data - tries Google Sheets first, then local CSV."""
-    global USE_CLOUD_DB
     
     # Try Google Sheets first (for cloud deployment)
-    if GSHEETS_AVAILABLE:
-        client = get_google_sheets_client()
-        if client is not None:
-            USE_CLOUD_DB = True
-            df = load_from_google_sheets()
-            if df is not None:
-                return df
+    if st.session_state.get('use_cloud_db', False):
+        print("🔄 Attempting to load from Google Sheets...")
+        df = load_from_google_sheets()
+        if df is not None:
+            return df
+        print("⚠️ Falling back to local CSV")
     
     # Fallback to local CSV
-    USE_CLOUD_DB = False
+    st.session_state['use_cloud_db'] = False
     if os.path.exists(DB_FILE):
         try:
             df = pd.read_csv(DB_FILE)
             df['Date'] = pd.to_datetime(df['Date'])
+            print(f"✅ Loaded {len(df)} rows from local CSV")
             return df
         except Exception as e:
-            st.error(f"Error loading database: {e}")
+            print(f"❌ Error loading local CSV: {e}")
             return pd.DataFrame()
     return pd.DataFrame()
 
 def save_to_database(new_df):
     """Merges new data with existing database and saves it."""
-    global USE_CLOUD_DB
     
     # 1. Load existing data
-    if USE_CLOUD_DB:
+    if st.session_state.get('use_cloud_db', False):
         old_df = load_from_google_sheets()
         if old_df is None:
             old_df = pd.DataFrame()
@@ -171,10 +210,15 @@ def save_to_database(new_df):
     combined_df = combined_df.sort_values(by=['Date', 'Client Type'], ascending=[False, True])
     
     # Save to appropriate storage
-    if USE_CLOUD_DB:
-        save_to_google_sheets(combined_df)
+    if st.session_state.get('use_cloud_db', False):
+        success = save_to_google_sheets(combined_df)
+        if success:
+            st.success("✅ Data saved to Google Sheets!")
+        else:
+            st.error("❌ Failed to save to Google Sheets")
     else:
         combined_df.to_csv(DB_FILE, index=False)
+        st.success("✅ Data saved to local CSV")
     
     return combined_df
 
