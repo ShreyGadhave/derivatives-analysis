@@ -119,6 +119,18 @@ st.markdown("""
     
     /* Make the calendar expander distinct */
     .streamlit-expanderHeader { background-color: #f0f2f6; border-radius: 5px; font-weight: 600; }
+    
+    /* Sticky Sidebar Submit Button */
+    [data-testid="stSidebarUserContent"] > div > div > div:last-child {
+        position: sticky;
+        bottom: 0;
+        background-color: #f0f2f6; /* Match sidebar background */
+        padding-top: 15px;
+        padding-bottom: 15px;
+        z-index: 999;
+        border-top: 1px solid #e0e0e0;
+        margin-bottom: 0 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
