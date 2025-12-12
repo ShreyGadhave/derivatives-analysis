@@ -418,6 +418,37 @@ def get_display_columns():
     return columns
 
 
+def get_header_rows():
+    """
+    Generate the 3-layer header rows for export.
+    Returns: (layer1_row, layer2_row, layer3_row)
+    """
+    layer1 = []  # Main category (OPTION, FUTURE, etc.)
+    layer2 = []  # Sub-category (NET DIFF, ROC, etc.)
+    layer3 = []  # Column name (call Index, Put Index, etc.)
+    
+    for group in HEADER_STRUCTURE['groups']:
+        for subgroup in group['subgroups']:
+            for col, label in subgroup['columns']:
+                layer1.append(group['name'])
+                layer2.append(subgroup['name'])
+                layer3.append(label if label else col)
+    
+    return layer1, layer2, layer3
+
+
+def get_column_colors():
+    """
+    Returns a list of colors for each column (matching the display).
+    """
+    colors = []
+    for group in HEADER_STRUCTURE['groups']:
+        for subgroup in group['subgroups']:
+            for col, _ in subgroup['columns']:
+                colors.append(group['color'])
+    return colors
+
+
 def prepare_export_data(df):
     """
     Prepare DataFrame for export with formatted values and proper column order.
@@ -461,4 +492,45 @@ def prepare_export_data(df):
     df_export = df_export[final_cols]
     
     return df_export
+
+
+def prepare_export_with_headers(df):
+    """
+    Prepare DataFrame for export with multi-row headers.
+    Returns list of rows including 3 header rows + data rows.
+    """
+    # Get formatted data
+    df_export = prepare_export_data(df)
+    
+    # Get header rows
+    layer1, layer2, layer3 = get_header_rows()
+    
+    # Filter headers to only include columns in our data
+    display_cols = get_display_columns()
+    available_cols = [col for col in display_cols if col in df_export.columns]
+    
+    # Build filtered header rows
+    filtered_layer1 = []
+    filtered_layer2 = []
+    filtered_layer3 = []
+    
+    for i, col in enumerate(display_cols):
+        if col in available_cols:
+            filtered_layer1.append(layer1[i])
+            filtered_layer2.append(layer2[i])
+            filtered_layer3.append(layer3[i])
+    
+    # Build rows
+    all_rows = [
+        filtered_layer1,  # Row 1: Main category
+        filtered_layer2,  # Row 2: Sub-category  
+        filtered_layer3,  # Row 3: Column names
+    ]
+    
+    # Add data rows
+    for _, row in df_export.iterrows():
+        all_rows.append(row.tolist())
+    
+    return all_rows, get_column_colors()
+
 

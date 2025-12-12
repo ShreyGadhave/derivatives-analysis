@@ -140,10 +140,10 @@ def load_from_google_sheets():
 
 
 def save_to_google_sheets(df):
-    """Save DataFrame to Google Sheets with proper formatting."""
+    """Save DataFrame to Google Sheets with proper formatting and colors."""
     try:
         # Import here to avoid circular import
-        from utils.display import prepare_export_data
+        from utils.display import prepare_export_with_headers, get_column_colors
         
         client = get_google_sheets_client()
         if client is None:
@@ -155,24 +155,84 @@ def save_to_google_sheets(df):
         
         worksheet = spreadsheet.sheet1
         
-        # Use shared export formatting function
-        df_export = prepare_export_data(df)
+        # Get formatted data with headers
+        all_rows, colors = prepare_export_with_headers(df)
         
-        # Convert to list of lists
-        headers = df_export.columns.tolist()
-        data_rows = df_export.values.tolist()
-        
-        # Clear and write
+        # Clear and write all rows at once
         worksheet.clear()
-        worksheet.append_row(headers)
+        worksheet.update('A1', all_rows)
         
-        if len(data_rows) > 0:
-            worksheet.append_rows(data_rows)
+        # Apply header colors (rows 1-3)
+        try:
+            # Get number of columns
+            num_cols = len(all_rows[0]) if all_rows else 0
+            
+            if num_cols > 0:
+                # Apply colors to header rows using batch update for better performance
+                from gspread.utils import rowcol_to_a1
+                
+                # Build color requests for each column in header rows
+                requests = []
+                for col_idx, color_hex in enumerate(colors[:num_cols]):
+                    # Convert hex color to RGB (0-1 scale)
+                    r = int(color_hex[1:3], 16) / 255
+                    g = int(color_hex[3:5], 16) / 255
+                    b = int(color_hex[5:7], 16) / 255
+                    
+                    # Apply color to rows 1-3 for this column
+                    for row_idx in range(3):
+                        requests.append({
+                            'repeatCell': {
+                                'range': {
+                                    'sheetId': worksheet.id,
+                                    'startRowIndex': row_idx,
+                                    'endRowIndex': row_idx + 1,
+                                    'startColumnIndex': col_idx,
+                                    'endColumnIndex': col_idx + 1
+                                },
+                                'cell': {
+                                    'userEnteredFormat': {
+                                        'backgroundColor': {'red': r, 'green': g, 'blue': b},
+                                        'textFormat': {'bold': True}
+                                    }
+                                },
+                                'fields': 'userEnteredFormat(backgroundColor,textFormat)'
+                            }
+                        })
+                
+                # Apply TOTAL row highlighting (light yellow)
+                # Find rows where column B (Client Type) contains "TOTAL"
+                for row_idx, row in enumerate(all_rows[3:], start=3):  # Skip header rows
+                    if len(row) > 1 and 'TOTAL' in str(row[1]).upper():
+                        requests.append({
+                            'repeatCell': {
+                                'range': {
+                                    'sheetId': worksheet.id,
+                                    'startRowIndex': row_idx,
+                                    'endRowIndex': row_idx + 1,
+                                    'startColumnIndex': 0,
+                                    'endColumnIndex': num_cols
+                                },
+                                'cell': {
+                                    'userEnteredFormat': {
+                                        'backgroundColor': {'red': 1.0, 'green': 0.98, 'blue': 0.8},  # Light yellow
+                                        'textFormat': {'bold': True}
+                                    }
+                                },
+                                'fields': 'userEnteredFormat(backgroundColor,textFormat)'
+                            }
+                        })
+                
+                # Execute batch update
+                if requests:
+                    spreadsheet.batch_update({'requests': requests})
+                    
+        except Exception as format_error:
+            # If formatting fails, data is still saved - just log the error
+            print(f"Warning: Could not apply formatting: {format_error}")
         
         return True
         
     except Exception as e:
         st.error(f"Error saving to Google Sheets: {e}")
         return False
-
-
