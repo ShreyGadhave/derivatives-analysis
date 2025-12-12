@@ -12,10 +12,13 @@ DB_FILE = 'derivative_data_db.csv'  # Local fallback file
 try:
     from google.oauth2.service_account import Credentials
     import gspread
+    from gspread.exceptions import SpreadsheetNotFound, APIError
     GSHEETS_AVAILABLE = True
     print("✅ Google Sheets libraries loaded successfully")
 except ImportError:
     GSHEETS_AVAILABLE = False
+    SpreadsheetNotFound = Exception  # Fallback to generic exception
+    APIError = Exception
     print("⚠️ Google Sheets libraries not available")
 
 st.set_page_config(page_title="Derivatives Analysis Tool", layout="wide")
@@ -24,9 +27,11 @@ st.set_page_config(page_title="Derivatives Analysis Tool", layout="wide")
 def is_cloud_deployment():
     """Check if we're running on Streamlit Cloud with secrets configured."""
     try:
-        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
-            print("✅ Streamlit secrets detected")
-            return True
+        # First check if secrets exist and are not empty
+        if hasattr(st, 'secrets') and len(st.secrets) > 0:
+            if 'gcp_service_account' in st.secrets:
+                print("✅ Streamlit secrets detected")
+                return True
         print("⚠️ No Streamlit secrets found")
         return False
     except Exception as e:
@@ -47,7 +52,15 @@ def get_google_sheets_client():
             print("❌ gspread not available")
             return None
         
-        if not hasattr(st, 'secrets') or 'gcp_service_account' not in st.secrets:
+        # Safely check for secrets
+        has_secrets = False
+        try:
+            if hasattr(st, 'secrets') and len(st.secrets) > 0:
+                has_secrets = 'gcp_service_account' in st.secrets
+        except Exception:
+            has_secrets = False
+        
+        if not has_secrets:
             print("❌ No gcp_service_account in secrets")
             return None
         
@@ -74,7 +87,7 @@ def get_or_create_spreadsheet(client):
         try:
             spreadsheet = client.open(spreadsheet_name)
             print(f"✅ Opened existing spreadsheet: {spreadsheet_name}")
-        except gspread.SpreadsheetNotFound:
+        except SpreadsheetNotFound:
             spreadsheet = client.create(spreadsheet_name)
             print(f"✅ Created new spreadsheet: {spreadsheet_name}")
             
@@ -84,8 +97,13 @@ def get_or_create_spreadsheet(client):
                 print(f"✅ Shared spreadsheet with: {st.secrets['share_email']}")
         
         return spreadsheet
+    except APIError as e:
+        print(f"❌ Google API Error: {e}")
+        st.error(f"Google API Error: {e}")
+        return None
     except Exception as e:
         print(f"❌ Error with spreadsheet: {e}")
+        st.error(f"Spreadsheet error: {e}")
         return None
 
 def load_from_google_sheets():
@@ -527,6 +545,53 @@ if st.session_state.get('use_cloud_db', False):
     st.sidebar.success("☁️ **Cloud Mode**: Google Sheets")
 else:
     st.sidebar.warning("💾 **Local Mode**: CSV File")
+
+# Debug/Diagnostics section (collapsible)
+with st.sidebar.expander("🔧 Connection Diagnostics"):
+    st.write("**Debug Info:**")
+    st.write(f"• gspread available: `{GSHEETS_AVAILABLE}`")
+    
+    # Safely check for secrets (avoid error when secrets.toml doesn't exist)
+    has_secrets = False
+    try:
+        if hasattr(st, 'secrets') and len(st.secrets) > 0:
+            has_secrets = 'gcp_service_account' in st.secrets
+    except Exception:
+        has_secrets = False
+    
+    st.write(f"• Secrets configured: `{has_secrets}`")
+    
+    if has_secrets:
+        try:
+            sa_email = st.secrets['gcp_service_account'].get('client_email', 'N/A')
+            st.write(f"• Service Account: `{sa_email[:30]}...`")
+        except Exception as e:
+            st.write(f"• Error reading secrets: `{e}`")
+    
+    st.write(f"• Cloud mode active: `{st.session_state.get('use_cloud_db', False)}`")
+    
+    # Test connection button
+    if st.button("🔄 Test Google Sheets Connection", key="test_gsheets"):
+        if GSHEETS_AVAILABLE and has_secrets:
+            try:
+                client = get_google_sheets_client()
+                if client:
+                    st.success("✅ Client authorized!")
+                    spreadsheet = get_or_create_spreadsheet(client)
+                    if spreadsheet:
+                        st.success(f"✅ Spreadsheet accessible: {spreadsheet.title}")
+                        ws = spreadsheet.sheet1
+                        row_count = ws.row_count
+                        st.write(f"📊 Sheet has {row_count} rows")
+                    else:
+                        st.error("❌ Could not access spreadsheet")
+                else:
+                    st.error("❌ Client authorization failed")
+            except Exception as e:
+                st.error(f"❌ Connection error: {e}")
+        else:
+            st.warning("⚠️ Google Sheets not available or secrets not configured")
+
 st.sidebar.markdown("---")
 
 # Show status of database
@@ -624,10 +689,22 @@ if st.sidebar.button("Submit & Process"):
                 # B. IMPROVED APPROACH: Merge raw data with existing DB first, then recalculate everything
                 
                 # Get existing raw data from database (we'll strip calculated columns and recalculate)
-                if os.path.exists(DB_FILE):
+                # Use Google Sheets if cloud mode is enabled, otherwise use local CSV
+                existing_df = pd.DataFrame()
+                
+                if st.session_state.get('use_cloud_db', False):
+                    # Load from Google Sheets
+                    existing_df = load_from_google_sheets()
+                    if existing_df is None:
+                        existing_df = pd.DataFrame()
+                    elif not existing_df.empty:
+                        existing_df['Date'] = pd.to_datetime(existing_df['Date'])
+                elif os.path.exists(DB_FILE):
+                    # Load from local CSV
                     existing_df = pd.read_csv(DB_FILE)
                     existing_df['Date'] = pd.to_datetime(existing_df['Date'])
-                    
+                
+                if not existing_df.empty:
                     # Keep only the raw input columns (not calculated ones)
                     raw_cols = ['Date', 'Client Type', 'Future Index Long', 'Future Index Short',
                                 'Future Stock Long', 'Future Stock Short', 
@@ -653,14 +730,25 @@ if st.sidebar.button("Submit & Process"):
                 # C. Process the COMBINED data (this calculates ROC, CoC across all dates)
                 processed_df = process_data(combined_raw, nifty_spot_input)
                 
-                # D. Save processed data directly to database
+                # D. Save processed data to appropriate storage
                 processed_df = processed_df.sort_values(by=['Date', 'Client Type'], ascending=[False, True])
-                processed_df.to_csv(DB_FILE, index=False)
+                
+                if st.session_state.get('use_cloud_db', False):
+                    # Save to Google Sheets
+                    success = save_to_google_sheets(processed_df)
+                    if success:
+                        st.success("✅ Data Processed and Saved to Google Sheets!")
+                    else:
+                        st.error("❌ Failed to save to Google Sheets. Trying local CSV...")
+                        processed_df.to_csv(DB_FILE, index=False)
+                        st.warning("⚠️ Data saved to local CSV as fallback.")
+                else:
+                    # Save to local CSV
+                    processed_df.to_csv(DB_FILE, index=False)
+                    st.success("✅ Data Processed and Saved to local CSV!")
                 
                 # E. Update Session State
                 st.session_state['data'] = processed_df
-                
-                st.success("✅ Data Processed and Saved to Database!")
             else:
                 st.error("❌ Could not find 'Date' or 'Client Type' columns. Check file format.")
     else:
