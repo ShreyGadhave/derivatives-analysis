@@ -61,14 +61,41 @@ def process_data(df, current_nifty_spot):
         latest_date = df['Date'].max()
         df.loc[df['Date'] == latest_date, 'Nifty Spot'] = current_nifty_spot
 
+    # --- RECALCULATE TOTAL ROWS ---
+    # Ensure Total row values match the sum of participants (Client, DII, FII, Pro)
+    # This addresses "row total it is sum of client dll fll pro"
+    numeric_cols_to_sum = [
+        'Future Index Long', 'Future Index Short',
+        'Future Stock Long', 'Future Stock Short',
+        'Option Index Call Long', 'Option Index Put Long',
+        'Option Index Call Short', 'Option Index Put Short',
+        'Option Stock Call Long', 'Option Stock Put Long',
+        'Option Stock Call Short', 'Option Stock Put Short'
+    ]
+    
+    # Identify Total rows and Participants
+    is_total_mask = df['Client Type'].str.strip().str.upper().isin(['TOTAL', 'TOTALS', 'GRAND TOTAL'])
+    participants_mask = ~is_total_mask & df['Client Type'].str.strip().ne('')
+    
+    # Calculate Sums per Date (Grand Total)
+    daily_sums = df[participants_mask].groupby('Date')[numeric_cols_to_sum].sum()
+    
+    # Update Total rows with calculated sums (or create if missing, though we assume structure exists)
+    for date in daily_sums.index:
+        mask = (df['Date'] == date) & is_total_mask
+        if mask.any():
+            for col in numeric_cols_to_sum:
+                if col in daily_sums.columns:
+                    df.loc[mask, col] = daily_sums.loc[date, col]
+
     # --- SECTION: OPTION ---
     df['Abs Change Call'] = df['Option Index Call Long'] - df['Option Index Call Short']
     df['Abs Change Put'] = df['Option Index Put Long'] - df['Option Index Put Short']
     df['Option NET'] = (df['Option Index Call Long'] + df['Option Index Put Short']) - \
                        (df['Option Index Put Long'] + df['Option Index Call Short'])
     
-    # Change of Character (CoC) and ROC - Applies to ALL rows (Client, DII, FII, Pro, TOTAL)
-    # Using groupby('Client Type') ensures we compare Client vs Client, Total vs Total
+    # Change of Character (CoC) and ROC - Applies to ALL rows including TOTAL
+    # Calculations compare Total vs Total, Client vs Client
     df['NET CALL (CoC)'] = df.groupby('Client Type')['Abs Change Call'].diff(periods=-1)
     df['NET PUT (CoC)'] = df.groupby('Client Type')['Abs Change Put'].diff(periods=-1)
     df['NET DIFF'] = df['NET CALL (CoC)'] - df['NET PUT (CoC)']
@@ -120,28 +147,20 @@ def process_data(df, current_nifty_spot):
     df['Nifty Diff'] = df.groupby('Client Type')['Nifty Spot'].diff(periods=-1)
 
     # --- SECTION: FUTURE RATIOS ---
-    # Get total for each date (from TOTAL row)
-    # Improved Total row detection
-    is_total_row = df['Client Type'].str.strip().str.upper().isin(['TOTAL', 'TOTALS', 'GRAND TOTAL'])
-    total_long_per_date = df[is_total_row].groupby('Date')['Future Index Long'].first()
-    total_short_per_date = df[is_total_row].groupby('Date')['Future Index Short'].first()
+    # Python Formula: Client / Sum(Non-Total Participants)
+    # We use the daily_sums calculated at the start which Represents the Grand Total of Participants
     
-    # If no TOTAL row found, calculate from sum of non-TOTAL rows
-    non_total_rows = ~is_total_row
-    if total_long_per_date.empty:
-        total_long_per_date = df[non_total_rows].groupby('Date')['Future Index Long'].sum()
-        total_short_per_date = df[non_total_rows].groupby('Date')['Future Index Short'].sum()
-    
-    # Map totals back to dataframe
-    df['_total_long'] = df['Date'].map(total_long_per_date)
-    df['_total_short'] = df['Date'].map(total_short_per_date)
+    # Map the totals for each date to all rows of that date
+    df['_grand_total_long'] = df['Date'].map(daily_sums['Future Index Long'])
+    df['_grand_total_short'] = df['Date'].map(daily_sums['Future Index Short'])
     
     # Calculate percentages
-    df['Future Total Long %'] = (df['Future Index Long'] / df['_total_long']) * 100
-    df['Future Total Short %'] = (df['Future Index Short'] / df['_total_short']) * 100
+    # For Client/DII/FII/Pro: Value / Grand Total * 100
+    # For TOTAL row: Value (which is Grand Total) / Grand Total * 100 = 100%
+    df['Future Total Long %'] = (df['Future Index Long'] / df['_grand_total_long']) * 100
+    df['Future Total Short %'] = (df['Future Index Short'] / df['_grand_total_short']) * 100
     
     # Drop temp columns
-    df = df.drop(columns=['_total_long', '_total_short'], errors='ignore')
+    df = df.drop(columns=['_grand_total_long', '_grand_total_short'], errors='ignore')
     
     return df
-
