@@ -112,11 +112,8 @@ def get_or_create_spreadsheet(client):
 
 
 def load_from_google_sheets():
-    """Load data from Google Sheets (handles 3-row headers and formatted values)."""
+    """Load data from Google Sheets."""
     try:
-        # Import to get column order
-        from utils.display import get_display_columns
-        
         client = get_google_sheets_client()
         if client is None:
             return None
@@ -127,51 +124,24 @@ def load_from_google_sheets():
         
         worksheet = spreadsheet.sheet1
         
-        # Get all values (including headers)
-        all_values = worksheet.get_all_values()
+        # Get all records (row 1 is headers, data starts row 2)
+        data = worksheet.get_all_records()
         
-        if not all_values or len(all_values) <= 3:
-            # Empty or only headers
+        if not data:
             return pd.DataFrame()
         
-        # Use our known display columns for consistency
-        display_cols = get_display_columns()
-        
-        # Data starts from row 4 (index 3)
-        data_rows = all_values[3:]
-        
-        if not data_rows:
-            return pd.DataFrame()
-        
-        # Create DataFrame - use display columns as headers
-        num_cols = len(data_rows[0]) if data_rows else 0
-        headers = display_cols[:num_cols] if len(display_cols) >= num_cols else display_cols + [f'Col_{i}' for i in range(len(display_cols), num_cols)]
-        
-        df = pd.DataFrame(data_rows, columns=headers[:len(data_rows[0])])
+        df = pd.DataFrame(data)
         
         # Convert Date column
         if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'], format='%d.%m.%y', errors='coerce')
+            df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         
-        # Convert formatted strings back to numbers for all numeric columns
+        # Convert numeric columns from strings where needed
         for col in df.columns:
             if col in ['Date', 'Client Type']:
                 continue
-            
-            # Convert formatted strings to numbers
-            def parse_number(val):
-                if pd.isna(val) or val == '' or val == '-':
-                    return float('nan')
-                try:
-                    # Remove commas and percentage signs
-                    val_str = str(val).replace(',', '').replace('%', '').strip()
-                    if val_str == '':
-                        return float('nan')
-                    return float(val_str)
-                except (ValueError, TypeError):
-                    return float('nan')
-            
-            df[col] = df[col].apply(parse_number)
+            # Try to convert to numeric
+            df[col] = pd.to_numeric(df[col], errors='coerce')
         
         return df
         
@@ -182,10 +152,10 @@ def load_from_google_sheets():
 
 
 def save_to_google_sheets(df):
-    """Save DataFrame to Google Sheets with proper formatting and colors."""
+    """Save only calculated/display columns to Google Sheets (not raw input columns)."""
     try:
-        # Import here to avoid circular import
-        from utils.display import prepare_export_with_headers, get_column_colors
+        # Import to get display columns
+        from utils.display import get_display_columns
         
         client = get_google_sheets_client()
         if client is None:
@@ -197,84 +167,34 @@ def save_to_google_sheets(df):
         
         worksheet = spreadsheet.sheet1
         
-        # Get formatted data with headers
-        all_rows, colors = prepare_export_with_headers(df)
+        # Get only display columns (calculated results)
+        display_cols = get_display_columns()
+        available_cols = [col for col in display_cols if col in df.columns]
         
-        # Clear and write all rows at once
+        # Filter to only display columns
+        df_copy = df[available_cols].copy()
+        
+        # Sort by date descending
+        if 'Date' in df_copy.columns:
+            df_copy = df_copy.sort_values(by=['Date', 'Client Type'], ascending=[False, True])
+            df_copy['Date'] = pd.to_datetime(df_copy['Date']).dt.strftime('%Y-%m-%d')
+        
+        # Replace NaN with empty string for JSON compatibility
+        df_copy = df_copy.fillna('')
+        
+        # Build rows with headers
+        headers = df_copy.columns.tolist()
+        data_rows = df_copy.values.tolist()
+        
+        all_rows = [headers] + data_rows
+        
+        # Clear and write
         worksheet.clear()
         worksheet.update('A1', all_rows)
-        
-        # Apply header colors (rows 1-3)
-        try:
-            # Get number of columns
-            num_cols = len(all_rows[0]) if all_rows else 0
-            
-            if num_cols > 0:
-                # Apply colors to header rows using batch update for better performance
-                from gspread.utils import rowcol_to_a1
-                
-                # Build color requests for each column in header rows
-                requests = []
-                for col_idx, color_hex in enumerate(colors[:num_cols]):
-                    # Convert hex color to RGB (0-1 scale)
-                    r = int(color_hex[1:3], 16) / 255
-                    g = int(color_hex[3:5], 16) / 255
-                    b = int(color_hex[5:7], 16) / 255
-                    
-                    # Apply color to rows 1-3 for this column
-                    for row_idx in range(3):
-                        requests.append({
-                            'repeatCell': {
-                                'range': {
-                                    'sheetId': worksheet.id,
-                                    'startRowIndex': row_idx,
-                                    'endRowIndex': row_idx + 1,
-                                    'startColumnIndex': col_idx,
-                                    'endColumnIndex': col_idx + 1
-                                },
-                                'cell': {
-                                    'userEnteredFormat': {
-                                        'backgroundColor': {'red': r, 'green': g, 'blue': b},
-                                        'textFormat': {'bold': True}
-                                    }
-                                },
-                                'fields': 'userEnteredFormat(backgroundColor,textFormat)'
-                            }
-                        })
-                
-                # Apply TOTAL row highlighting (light yellow)
-                # Find rows where column B (Client Type) contains "TOTAL"
-                for row_idx, row in enumerate(all_rows[3:], start=3):  # Skip header rows
-                    if len(row) > 1 and 'TOTAL' in str(row[1]).upper():
-                        requests.append({
-                            'repeatCell': {
-                                'range': {
-                                    'sheetId': worksheet.id,
-                                    'startRowIndex': row_idx,
-                                    'endRowIndex': row_idx + 1,
-                                    'startColumnIndex': 0,
-                                    'endColumnIndex': num_cols
-                                },
-                                'cell': {
-                                    'userEnteredFormat': {
-                                        'backgroundColor': {'red': 1.0, 'green': 0.98, 'blue': 0.8},  # Light yellow
-                                        'textFormat': {'bold': True}
-                                    }
-                                },
-                                'fields': 'userEnteredFormat(backgroundColor,textFormat)'
-                            }
-                        })
-                
-                # Execute batch update
-                if requests:
-                    spreadsheet.batch_update({'requests': requests})
-                    
-        except Exception as format_error:
-            # If formatting fails, data is still saved - just log the error
-            print(f"Warning: Could not apply formatting: {format_error}")
         
         return True
         
     except Exception as e:
         st.error(f"Error saving to Google Sheets: {e}")
         return False
+
