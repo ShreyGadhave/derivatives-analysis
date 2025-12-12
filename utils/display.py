@@ -422,17 +422,18 @@ def get_header_rows():
     """
     Generate the 3-layer header rows for export.
     Returns: (layer1_row, layer2_row, layer3_row)
+    Layer3 contains actual column NAMES (for data matching)
     """
     layer1 = []  # Main category (OPTION, FUTURE, etc.)
     layer2 = []  # Sub-category (NET DIFF, ROC, etc.)
-    layer3 = []  # Column name (call Index, Put Index, etc.)
+    layer3 = []  # Column name (actual column name for data matching)
     
     for group in HEADER_STRUCTURE['groups']:
         for subgroup in group['subgroups']:
             for col, label in subgroup['columns']:
                 layer1.append(group['name'])
                 layer2.append(subgroup['name'])
-                layer3.append(label if label else col)
+                layer3.append(col)  # Use column NAME, not label
     
     return layer1, layer2, layer3
 

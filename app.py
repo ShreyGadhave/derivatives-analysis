@@ -160,7 +160,7 @@ if st.sidebar.button("Submit & Process"):
                 raw_df['Date'] = pd.to_datetime(raw_df['Date'], dayfirst=True, errors='coerce')
                 new_dates = raw_df['Date'].dropna().unique()
                 
-                # Load existing data from sheets
+                # Load existing data from sheets (includes raw columns)
                 existing_df = pd.DataFrame()
                 
                 if st.session_state.get('use_cloud_db', False):
@@ -183,14 +183,34 @@ if st.sidebar.button("Submit & Process"):
                         st.error(f"⚠️ Data for these dates already exists: **{', '.join(date_strs)}**. Please remove these dates from your file or delete existing data first.")
                         st.stop()
                 
-                # Process the new data
-                new_processed = process_data(raw_df, nifty_spot_input)
+                # Combine new raw data with existing raw data for proper calculations
+                from config import RAW_DATA_COLUMNS
                 
-                # Combine with existing data
                 if not existing_df.empty:
-                    combined_df = pd.concat([new_processed, existing_df], ignore_index=True)
+                    # Get raw columns from existing data
+                    existing_raw_cols = [c for c in RAW_DATA_COLUMNS if c in existing_df.columns]
+                    
+                    if existing_raw_cols:
+                        # Extract raw data from existing
+                        existing_raw = existing_df[existing_raw_cols].copy()
+                        
+                        # Align columns
+                        for col in raw_df.columns:
+                            if col not in existing_raw.columns:
+                                existing_raw[col] = float('nan')
+                        for col in existing_raw.columns:
+                            if col not in raw_df.columns:
+                                raw_df[col] = float('nan')
+                        
+                        # Combine: new raw + existing raw
+                        combined_raw = pd.concat([raw_df, existing_raw], ignore_index=True)
+                    else:
+                        combined_raw = raw_df.copy()
                 else:
-                    combined_df = new_processed.copy()
+                    combined_raw = raw_df.copy()
+                
+                # Process ALL raw data together (enables proper diff calculations)
+                combined_df = process_data(combined_raw, nifty_spot_input)
                 
                 # Sort and save
                 combined_df = combined_df.sort_values(by=['Date', 'Client Type'], ascending=[False, True])
