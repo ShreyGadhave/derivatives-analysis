@@ -5,7 +5,7 @@ import pandas as pd
 import os
 
 # Import configuration
-from config import DB_FILE, RAW_DATA_COLUMNS
+from config import DB_FILE
 
 # Import utility modules
 from utils.google_sheets import (
@@ -156,7 +156,10 @@ if st.sidebar.button("Submit & Process"):
             raw_df = read_file_smart(uploaded_file)
             
             if raw_df is not None:
-                # Load existing data
+                # Process ONLY the new uploaded data
+                new_processed = process_data(raw_df, nifty_spot_input)
+                
+                # Load existing data from sheets (already calculated, keep as-is)
                 existing_df = pd.DataFrame()
                 
                 if st.session_state.get('use_cloud_db', False):
@@ -170,24 +173,20 @@ if st.sidebar.button("Submit & Process"):
                     existing_df['Date'] = pd.to_datetime(existing_df['Date'])
                 
                 if not existing_df.empty:
-                    # Keep only raw columns
-                    available_raw_cols = [c for c in RAW_DATA_COLUMNS if c in existing_df.columns]
-                    existing_raw = existing_df[available_raw_cols].copy()
+                    # Remove dates that are being uploaded (replace with new data)
+                    new_dates = pd.to_datetime(new_processed['Date']).unique()
+                    existing_df = existing_df[~existing_df['Date'].isin(new_dates)]
                     
-                    # Remove dates being uploaded
-                    new_dates = pd.to_datetime(raw_df['Date']).unique()
-                    existing_raw = existing_raw[~existing_raw['Date'].isin(new_dates)]
-                    
-                    combined_raw = pd.concat([existing_raw, raw_df], ignore_index=True)
+                    # Combine: new processed data + old data (keep old as-is)
+                    combined_df = pd.concat([new_processed, existing_df], ignore_index=True)
                 else:
-                    combined_raw = raw_df.copy()
+                    combined_df = new_processed.copy()
                 
-                # Process and save
-                processed_df = process_data(combined_raw, nifty_spot_input)
-                processed_df = processed_df.sort_values(by=['Date', 'Client Type'], ascending=[False, True])
+                # Sort and save
+                combined_df = combined_df.sort_values(by=['Date', 'Client Type'], ascending=[False, True])
                 
-                save_database(processed_df, use_cloud=st.session_state.get('use_cloud_db', False))
-                st.session_state['data'] = processed_df
+                save_database(combined_df, use_cloud=st.session_state.get('use_cloud_db', False))
+                st.session_state['data'] = combined_df
             else:
                 st.error("❌ Could not find 'Date' or 'Client Type' columns. Check file format.")
     else:
