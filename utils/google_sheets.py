@@ -112,11 +112,8 @@ def get_or_create_spreadsheet(client):
 
 
 def load_from_google_sheets():
-    """Load data from Google Sheets (handles 3-row headers)."""
+    """Load all data from Google Sheets (handles 3-row headers, includes raw columns)."""
     try:
-        # Import to get column names
-        from utils.display import get_display_columns
-        
         client = get_google_sheets_client()
         if client is None:
             return None
@@ -134,18 +131,17 @@ def load_from_google_sheets():
             # Empty or only headers
             return pd.DataFrame()
         
+        # Row 3 (index 2) contains actual column names
+        header_row = all_values[2]
+        
         # Data rows start after 3 header rows
         data_rows = all_values[3:]
         
         if not data_rows:
             return pd.DataFrame()
         
-        # Use display columns as headers
-        display_cols = get_display_columns()
-        num_cols = len(data_rows[0]) if data_rows else 0
-        headers = display_cols[:num_cols]
-        
-        df = pd.DataFrame(data_rows, columns=headers)
+        # Use row 3 as column names
+        df = pd.DataFrame(data_rows, columns=header_row)
         
         # Convert Date column
         if 'Date' in df.columns:
@@ -153,7 +149,7 @@ def load_from_google_sheets():
         
         # Convert numeric columns from strings
         for col in df.columns:
-            if col in ['Date', 'Client Type']:
+            if col in ['Date', 'Client Type', '']:
                 continue
             df[col] = pd.to_numeric(df[col], errors='coerce')
         
@@ -165,11 +161,13 @@ def load_from_google_sheets():
 
 
 
+
 def save_to_google_sheets(df):
-    """Save calculated data with 3-layer headers to Google Sheets."""
+    """Save all data (display + raw columns) to Google Sheets for proper calculations."""
     try:
         # Import to get display columns and headers
         from utils.display import get_display_columns, get_header_rows
+        from config import RAW_DATA_COLUMNS
         
         client = get_google_sheets_client()
         if client is None:
@@ -187,13 +185,27 @@ def save_to_google_sheets(df):
         # Get 3-layer headers
         layer1, layer2, layer3 = get_header_rows()
         
-        # Create a copy with only display columns, adding missing ones as empty
+        # Create a copy with display columns first, then raw columns
         df_copy = pd.DataFrame()
+        
+        # Add display columns
         for col in display_cols:
             if col in df.columns:
                 df_copy[col] = df[col]
             else:
-                df_copy[col] = ''  # Add missing columns as empty
+                df_copy[col] = ''
+        
+        # Add raw input columns (needed for diff calculations)
+        raw_cols_to_add = []
+        for col in RAW_DATA_COLUMNS:
+            if col not in display_cols and col in df.columns:
+                df_copy[col] = df[col]
+                raw_cols_to_add.append(col)
+        
+        # Extend headers for raw columns
+        extended_layer1 = layer1 + ['RAW DATA'] * len(raw_cols_to_add)
+        extended_layer2 = layer2 + [''] * len(raw_cols_to_add)
+        extended_layer3 = layer3 + raw_cols_to_add
         
         # Sort by date descending
         if 'Date' in df_copy.columns:
@@ -207,9 +219,9 @@ def save_to_google_sheets(df):
         data_rows = df_copy.values.tolist()
         
         all_rows = [
-            layer1,  # Row 1: Main groups (OPTION, FUTURE, etc.)
-            layer2,  # Row 2: Subgroups (NET DIFF, ROC, etc.)
-            layer3,  # Row 3: Column labels
+            extended_layer1,  # Row 1: Main groups
+            extended_layer2,  # Row 2: Subgroups
+            extended_layer3,  # Row 3: Column labels
         ] + data_rows
         
         # Clear and write
@@ -218,6 +230,10 @@ def save_to_google_sheets(df):
         
         return True
         
+    except Exception as e:
+        st.error(f"Error saving to Google Sheets: {e}")
+        return False
+
     except Exception as e:
         st.error(f"Error saving to Google Sheets: {e}")
         return False
