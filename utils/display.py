@@ -416,8 +416,14 @@ def generate_calendar_html(available_dates):
     if not available_dates:
         return "<div>No data available</div>"
     
-    # Convert dates to pandas datetime index
-    dates = pd.to_datetime(available_dates).dropna().sort_values()
+    # Convert dates to pandas datetime index safely
+    try:
+        dt_index = pd.to_datetime(available_dates, errors='coerce')
+        # Filter out NaT and sort
+        dates = dt_index[dt_index.notna()].sort_values()
+    except Exception:
+        return "<div>Error processing dates</div>"
+
     if dates.empty:
         return "<div>No valid dates</div>"
 
