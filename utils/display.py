@@ -445,7 +445,7 @@ def generate_calendar_html(available_dates):
             gap: 12px;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             justify-content: center;
-            padding: 5px;
+            padding: 10px; /* Increased padding */
         }
         .month-card {
             background: #ffffff;

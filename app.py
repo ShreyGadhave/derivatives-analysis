@@ -138,10 +138,13 @@ with col_cal:
         cal_label = "📅 0 Active Dates"
         cal_html = generate_calendar_html([])
 
-    with st.expander(cal_label, expanded=False):
-        # Use components.html to render in an iframe, preventing style stripping/markdown issues
-        # Calculate dynamic height: ~200px per row or fixed scrollable area
-        components.html(cal_html, height=350, scrolling=True)
+    # Use Popover if available (floating), else Expander (push down)
+    if hasattr(st, "popover"):
+        with st.popover(cal_label):
+             components.html(cal_html, height=350, scrolling=True)
+    else:
+        with st.expander(cal_label, expanded=False):
+            components.html(cal_html, height=350, scrolling=True)
 
 
 
