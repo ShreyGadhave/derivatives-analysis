@@ -46,7 +46,7 @@ if 'last_uploaded_file' not in st.session_state:
 # Custom CSS for better spacing, branding, and Calendar component
 st.markdown("""
 <style>
-    .block-container { padding-top: 1.5rem; padding-bottom: 3rem; }
+    .block-container { padding-top: 5rem; padding-bottom: 3rem; }
     h1 { font-family: 'Segoe UI', Tahoma, sans-serif; font-weight: 600; font-size: 2.2rem; }
     
     /* Calendar Component Styles */
