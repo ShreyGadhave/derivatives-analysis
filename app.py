@@ -158,9 +158,9 @@ if st.sidebar.button("Submit & Process"):
             if raw_df is not None:
                 # Clean new raw data dates
                 raw_df['Date'] = pd.to_datetime(raw_df['Date'], dayfirst=True, errors='coerce')
-                new_dates = raw_df['Date'].unique()
+                new_dates = raw_df['Date'].dropna().unique()
                 
-                # Load existing data from sheets (includes raw columns now)
+                # Load existing data from sheets
                 existing_df = pd.DataFrame()
                 
                 if st.session_state.get('use_cloud_db', False):
@@ -168,43 +168,41 @@ if st.sidebar.button("Submit & Process"):
                     if existing_df is None:
                         existing_df = pd.DataFrame()
                     elif not existing_df.empty:
-                        existing_df['Date'] = pd.to_datetime(existing_df['Date'])
+                        existing_df['Date'] = pd.to_datetime(existing_df['Date'], errors='coerce')
                 elif os.path.exists(DB_FILE):
                     existing_df = pd.read_csv(DB_FILE)
                     existing_df['Date'] = pd.to_datetime(existing_df['Date'])
                 
-                if not existing_df.empty:
-                    # Remove dates that are being uploaded (they'll be replaced)
-                    existing_df = existing_df[~existing_df['Date'].isin(new_dates)]
+                # Check if date already exists
+                if not existing_df.empty and 'Date' in existing_df.columns:
+                    existing_dates = existing_df['Date'].dropna().unique()
+                    duplicate_dates = [d for d in new_dates if d in existing_dates]
                     
-                    # Get raw columns from existing data for combining
-                    from config import RAW_DATA_COLUMNS
-                    existing_raw_cols = [c for c in RAW_DATA_COLUMNS if c in existing_df.columns]
-                    
-                    if existing_raw_cols:
-                        # Extract raw data from existing (for recalculation)
-                        existing_raw = existing_df[existing_raw_cols].copy()
-                        
-                        # Combine: new raw + existing raw
-                        combined_raw = pd.concat([raw_df, existing_raw], ignore_index=True)
-                    else:
-                        # No raw columns in existing - just use new data
-                        combined_raw = raw_df.copy()
-                else:
-                    combined_raw = raw_df.copy()
+                    if duplicate_dates:
+                        date_strs = [pd.to_datetime(d).strftime('%d.%m.%Y') for d in duplicate_dates]
+                        st.error(f"⚠️ Data for these dates already exists: **{', '.join(date_strs)}**. Please remove these dates from your file or delete existing data first.")
+                        st.stop()
                 
-                # Process ALL data together (this enables proper diff calculations)
-                combined_df = process_data(combined_raw, nifty_spot_input)
+                # Process the new data
+                new_processed = process_data(raw_df, nifty_spot_input)
+                
+                # Combine with existing data
+                if not existing_df.empty:
+                    combined_df = pd.concat([new_processed, existing_df], ignore_index=True)
+                else:
+                    combined_df = new_processed.copy()
                 
                 # Sort and save
                 combined_df = combined_df.sort_values(by=['Date', 'Client Type'], ascending=[False, True])
                 
                 save_database(combined_df, use_cloud=st.session_state.get('use_cloud_db', False))
                 st.session_state['data'] = combined_df
+                st.success(f"✅ Data for {len(new_dates)} date(s) processed and saved successfully!")
             else:
                 st.error("❌ Could not find 'Date' or 'Client Type' columns. Check file format.")
     else:
         st.error("Please upload a file first.")
+
 
 
 # --- DISPLAY RESULTS ---

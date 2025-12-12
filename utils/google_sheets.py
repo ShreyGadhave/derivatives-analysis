@@ -193,11 +193,10 @@ def load_from_google_sheets():
 
 
 def save_to_google_sheets(df):
-    """Save all data (display + raw columns) to Google Sheets for proper calculations."""
+    """Save calculated data with 3-layer headers to Google Sheets."""
     try:
         # Import to get display columns and headers
         from utils.display import get_display_columns, get_header_rows
-        from config import RAW_DATA_COLUMNS
         
         client = get_google_sheets_client()
         if client is None:
@@ -215,27 +214,13 @@ def save_to_google_sheets(df):
         # Get 3-layer headers
         layer1, layer2, layer3 = get_header_rows()
         
-        # Create a copy with display columns first, then raw columns
+        # Create a copy with only display columns
         df_copy = pd.DataFrame()
-        
-        # Add display columns
         for col in display_cols:
             if col in df.columns:
                 df_copy[col] = df[col]
             else:
                 df_copy[col] = ''
-        
-        # Add raw input columns (needed for diff calculations)
-        raw_cols_to_add = []
-        for col in RAW_DATA_COLUMNS:
-            if col not in display_cols and col in df.columns:
-                df_copy[col] = df[col]
-                raw_cols_to_add.append(col)
-        
-        # Extend headers for raw columns
-        extended_layer1 = layer1 + ['RAW DATA'] * len(raw_cols_to_add)
-        extended_layer2 = layer2 + [''] * len(raw_cols_to_add)
-        extended_layer3 = layer3 + raw_cols_to_add
         
         # Sort by date descending
         if 'Date' in df_copy.columns:
@@ -249,9 +234,9 @@ def save_to_google_sheets(df):
         data_rows = df_copy.values.tolist()
         
         all_rows = [
-            extended_layer1,  # Row 1: Main groups
-            extended_layer2,  # Row 2: Subgroups
-            extended_layer3,  # Row 3: Column labels
+            layer1,  # Row 1: Main groups
+            layer2,  # Row 2: Subgroups
+            layer3,  # Row 3: Column labels
         ] + data_rows
         
         # Clear and write
@@ -263,8 +248,3 @@ def save_to_google_sheets(df):
     except Exception as e:
         st.error(f"Error saving to Google Sheets: {e}")
         return False
-
-    except Exception as e:
-        st.error(f"Error saving to Google Sheets: {e}")
-        return False
-
