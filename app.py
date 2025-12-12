@@ -80,26 +80,57 @@ def get_google_sheets_client():
         return None
 
 def get_or_create_spreadsheet(client):
-    """Get or create the spreadsheet."""
+    """Get or create the spreadsheet. Tries URL first (recommended), then name."""
     try:
+        # Option 1: Try to open by URL (recommended - avoids Drive quota issues)
+        if 'spreadsheet_url' in st.secrets and st.secrets['spreadsheet_url']:
+            try:
+                spreadsheet_url = st.secrets['spreadsheet_url']
+                spreadsheet = client.open_by_url(spreadsheet_url)
+                print(f"✅ Opened spreadsheet by URL")
+                return spreadsheet
+            except Exception as e:
+                print(f"⚠️ Could not open by URL: {e}")
+                st.warning(f"Could not open spreadsheet by URL: {e}")
+        
+        # Option 2: Try to open by name
         spreadsheet_name = st.secrets.get("spreadsheet_name", "DerivativesDB")
         
         try:
             spreadsheet = client.open(spreadsheet_name)
             print(f"✅ Opened existing spreadsheet: {spreadsheet_name}")
+            return spreadsheet
         except SpreadsheetNotFound:
-            spreadsheet = client.create(spreadsheet_name)
-            print(f"✅ Created new spreadsheet: {spreadsheet_name}")
-            
-            # Share with user if email provided
-            if 'share_email' in st.secrets:
-                spreadsheet.share(st.secrets['share_email'], perm_type='user', role='writer')
-                print(f"✅ Shared spreadsheet with: {st.secrets['share_email']}")
-        
-        return spreadsheet
+            # Option 3: Create new spreadsheet (requires Drive quota)
+            try:
+                spreadsheet = client.create(spreadsheet_name)
+                print(f"✅ Created new spreadsheet: {spreadsheet_name}")
+                
+                # Share with user if email provided
+                if 'share_email' in st.secrets:
+                    spreadsheet.share(st.secrets['share_email'], perm_type='user', role='writer')
+                    print(f"✅ Shared spreadsheet with: {st.secrets['share_email']}")
+                
+                return spreadsheet
+            except APIError as create_error:
+                error_msg = str(create_error)
+                if 'quota' in error_msg.lower() or 'storage' in error_msg.lower():
+                    st.error("❌ **Google Drive Storage Quota Exceeded!**\n\n"
+                            "The service account cannot create new spreadsheets.\n\n"
+                            "**Fix:** Create a spreadsheet manually in your Google Drive, "
+                            "share it with the service account email, and add `spreadsheet_url` to your secrets.")
+                else:
+                    st.error(f"❌ Could not create spreadsheet: {create_error}")
+                return None
+                
     except APIError as e:
+        error_msg = str(e)
         print(f"❌ Google API Error: {e}")
-        st.error(f"Google API Error: {e}")
+        if 'quota' in error_msg.lower() or 'storage' in error_msg.lower():
+            st.error("❌ **Google Drive Storage Quota Exceeded!**\n\n"
+                    "Please create a spreadsheet manually and use `spreadsheet_url` in your secrets.")
+        else:
+            st.error(f"Google API Error: {e}")
         return None
     except Exception as e:
         print(f"❌ Error with spreadsheet: {e}")
