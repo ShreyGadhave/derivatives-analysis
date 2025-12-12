@@ -139,7 +139,9 @@ with col_cal:
         cal_html = generate_calendar_html([])
 
     with st.expander(cal_label, expanded=False):
-        st.markdown(cal_html, unsafe_allow_html=True)
+        # Use components.html to render in an iframe, preventing style stripping/markdown issues
+        # Calculate dynamic height: ~200px per row or fixed scrollable area
+        components.html(cal_html, height=350, scrolling=True)
 
 
 

@@ -431,8 +431,6 @@ def generate_calendar_html(available_dates):
         
     except Exception as e:
         return f"<div>Error processing dates: {str(e)}</div>"
-
-    if dates.empty:
         return "<div>No valid dates</div>"
 
     # Identify month/years to display
@@ -440,6 +438,77 @@ def generate_calendar_html(available_dates):
     months = dates.to_period('M').unique()
     
     calendar_html = """
+    <style>
+        .calendar-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            justify-content: center;
+            padding: 5px;
+        }
+        .month-card {
+            background: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 8px;
+            width: 180px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+        }
+        .month-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .month-title {
+            text-align: center;
+            font-weight: 700;
+            color: #444;
+            margin-bottom: 6px;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            border-bottom: 1px solid #f0f0f0;
+            padding-bottom: 4px;
+        }
+        .days-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+            text-align: center;
+            font-size: 0.7em;
+        }
+        .day-header {
+            color: #999;
+            font-weight: 600;
+            padding-bottom: 2px;
+            font-size: 0.9em;
+        }
+        .day-cell {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 3px;
+            color: #d0d0d0;
+            background: #f8f9fa;
+            cursor: default;
+            font-size: 0.95em;
+        }
+        .day-cell.active {
+            background-color: #22c55e;
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 1px 2px rgba(34, 197, 94, 0.4);
+        }
+        .day-cell.active:hover {
+            background-color: #16a34a;
+            transform: scale(1.1);
+        }
+        .day-cell.empty {
+            background: transparent;
+        }
+    </style>
     <div class="calendar-container">
     """
     
