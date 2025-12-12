@@ -19,7 +19,7 @@ from utils.google_sheets import (
 from utils.database import load_database, save_database
 from utils.file_processing import read_file_smart, peek_file_for_date
 from utils.calculations import fetch_nifty_closing_price, process_data
-from utils.display import generate_table_html, prepare_export_with_headers
+from utils.display import generate_table_html, prepare_export_with_headers, generate_calendar_html
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Derivatives Analysis Tool", layout="wide")
@@ -41,8 +41,37 @@ if 'last_uploaded_file' not in st.session_state:
     st.session_state['last_uploaded_file'] = None
 
 
+
 # --- MAIN APP UI ---
-st.title("📊 Derivatives Data Analysis Tool")
+# Custom CSS for better spacing and branding look
+st.markdown("""
+<style>
+    .block-container { padding-top: 1.5rem; padding-bottom: 3rem; }
+    h1 { font-family: 'Segoe UI', Tahoma, sans-serif; font-weight: 600; font-size: 2.2rem; }
+    /* Make the calendar expander distinct */
+    .streamlit-expanderHeader { background-color: #f0f2f6; border-radius: 5px; font-weight: 600; }
+</style>
+""", unsafe_allow_html=True)
+
+col_header, col_cal = st.columns([0.75, 0.25])
+
+with col_header:
+    st.title("📊 Derivatives Data Analysis Tool")
+
+with col_cal:
+    # Calendar / Status Component
+    if not st.session_state['data'].empty and 'Date' in st.session_state['data'].columns:
+        unique_dates = st.session_state['data']['Date'].unique()
+        day_count = len(unique_dates)
+        cal_label = f"📅 {day_count} Active Dates"
+        cal_html = generate_calendar_html(unique_dates)
+    else:
+        cal_label = "📅 0 Active Dates"
+        cal_html = generate_calendar_html([])
+
+    with st.expander(cal_label, expanded=False):
+        st.markdown(cal_html, unsafe_allow_html=True)
+
 
 
 # --- SIDEBAR (Top: Compact status indicator) ---

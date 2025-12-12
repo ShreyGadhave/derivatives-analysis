@@ -405,7 +405,134 @@ def generate_table_html(display_df):
     </html>
     """
     
+
     return html
+
+
+def generate_calendar_html(available_dates):
+    """
+    Generates an HTML calendar component where 'available_dates' are highlighted green.
+    """
+    if not available_dates:
+        return "<div>No data available</div>"
+    
+    # Convert dates to pandas datetime index
+    dates = pd.to_datetime(available_dates).dropna().sort_values()
+    if dates.empty:
+        return "<div>No valid dates</div>"
+
+    # Identify month/years to display
+    # We'll show distinct months present in the data
+    months = dates.to_period('M').unique()
+    
+    calendar_html = """
+    <style>
+        .calendar-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            justify-content: flex-end; /* Align right */
+        }
+        .month-card {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            width: 220px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .month-title {
+            text-align: center;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+            text-transform: uppercase;
+        }
+        .days-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+            text-align: center;
+            font-size: 0.75em;
+        }
+        .day-header {
+            color: #888;
+            font-weight: 600;
+            padding-bottom: 4px;
+        }
+        .day-cell {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            color: #ccc; /* Default inactive color */
+            background: #f9f9f9;
+        }
+        .day-cell.active {
+            background-color: #28a745; /* Green for uploaded */
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 1px 2px rgba(40, 167, 69, 0.3);
+        }
+        .day-cell.empty {
+            background: transparent;
+        }
+    </style>
+    <div class="calendar-container">
+    """
+    
+    import calendar
+    
+    # Sort months descending (newest first)
+    for period in sorted(months, reverse=True):
+        year = period.year
+        month = period.month
+        month_name = calendar.month_name[month]
+        
+        # Get matrix of days [[0,0,1,2...], [3,4...]]
+        cal = calendar.monthcalendar(year, month)
+        
+        calendar_html += f"""
+        <div class="month-card">
+            <div class="month-title">{month_name} {year}</div>
+            <div class="days-grid">
+                <div class="day-header">M</div>
+                <div class="day-header">T</div>
+                <div class="day-header">W</div>
+                <div class="day-header">T</div>
+                <div class="day-header">F</div>
+                <div class="day-header">S</div>
+                <div class="day-header">S</div>
+        """
+        
+        for week in cal:
+            for day in week:
+                if day == 0:
+                    calendar_html += '<div class="day-cell empty"></div>'
+                else:
+                    # Check if this specific date is in our available_dates
+                    # Construct date object
+                    current_date = pd.Timestamp(year=year, month=month, day=day)
+                    
+                    # Check existence
+                    is_active = current_date in dates
+                    
+                    active_class = "active" if is_active else ""
+                    title_attr = f"Data available: {current_date.strftime('%d %b %Y')}" if is_active else f"{current_date.strftime('%d %b %Y')}"
+                    
+                    calendar_html += f'<div class="day-cell {active_class}" title="{title_attr}">{day}</div>'
+        
+        calendar_html += """
+            </div>
+        </div>
+        """
+        
+    calendar_html += "</div>"
+    
+    return calendar_html
 
 
 def get_display_columns():
