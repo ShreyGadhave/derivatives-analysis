@@ -193,6 +193,10 @@ def get_table_css():
     }
     .styled-table .date-group-1 { background-color: #ffffff !important; }
     .styled-table .date-group-2 { background-color: #f0f8ff !important; }
+    .styled-table .total-row td {
+        background-color: #FFFACD !important;
+        font-weight: 600;
+    }
     .close-fullscreen-btn {
         position: fixed;
         top: 15px;
@@ -374,8 +378,15 @@ def generate_table_html(display_df):
             date_group = 1 - date_group
             prev_date = current_date
         
-        row_class = f'date-group-{date_group + 1}'
-        html += f'<tr class="{row_class}">'
+        # Check if this is a TOTAL row
+        client_type = str(row.get('Client Type', '')).upper()
+        is_total = 'TOTAL' in client_type
+        
+        row_classes = [f'date-group-{date_group + 1}']
+        if is_total:
+            row_classes.append('total-row')
+        
+        html += f'<tr class="{" ".join(row_classes)}">'
         for col in all_display_cols:
             value = row.get(col, '-')
             formatted, cell_class = format_value_with_class(value, col)
@@ -395,3 +406,59 @@ def generate_table_html(display_df):
     """
     
     return html
+
+
+def get_display_columns():
+    """Returns the ordered list of columns as they appear in the display."""
+    columns = []
+    for group in HEADER_STRUCTURE['groups']:
+        for subgroup in group['subgroups']:
+            for col, _ in subgroup['columns']:
+                columns.append(col)
+    return columns
+
+
+def prepare_export_data(df):
+    """
+    Prepare DataFrame for export with formatted values and proper column order.
+    Returns a DataFrame ready for CSV or Google Sheets export.
+    """
+    # Get display column order
+    display_cols = get_display_columns()
+    
+    # Sort data
+    df_export = df.copy()
+    df_export = df_export.sort_values(by=['Date', 'Client Type'], ascending=[False, True])
+    
+    # Format Date column
+    if 'Date' in df_export.columns:
+        df_export['Date'] = pd.to_datetime(df_export['Date']).dt.strftime('%d.%m.%y')
+    
+    # Format numeric columns
+    for col in df_export.columns:
+        if col in ['Date', 'Client Type']:
+            continue
+        
+        if df_export[col].dtype in ['float64', 'float32', 'int64', 'int32']:
+            if 'Ratio' in col:
+                df_export[col] = df_export[col].apply(lambda x: f'{x:.2f}' if pd.notna(x) else '')
+            elif '%' in col:
+                df_export[col] = df_export[col].apply(lambda x: f'{x:.2f}%' if pd.notna(x) else '')
+            elif col in ['Nifty Spot', 'Nifty Diff']:
+                df_export[col] = df_export[col].apply(lambda x: f'{x:.2f}' if pd.notna(x) else '')
+            else:
+                df_export[col] = df_export[col].apply(lambda x: f'{x:,.0f}' if pd.notna(x) else '')
+    
+    # Replace NaN with empty string
+    df_export = df_export.fillna('')
+    
+    # Reorder columns to match display order
+    available_cols = [col for col in display_cols if col in df_export.columns]
+    # Add any remaining columns not in display order
+    other_cols = [col for col in df_export.columns if col not in available_cols]
+    final_cols = available_cols + other_cols
+    
+    df_export = df_export[final_cols]
+    
+    return df_export
+

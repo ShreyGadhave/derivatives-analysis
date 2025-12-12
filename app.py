@@ -19,7 +19,7 @@ from utils.google_sheets import (
 from utils.database import load_database, save_database
 from utils.file_processing import read_file_smart, peek_file_for_date
 from utils.calculations import fetch_nifty_closing_price, process_data
-from utils.display import generate_table_html
+from utils.display import generate_table_html, prepare_export_data
 
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="Derivatives Analysis Tool", layout="wide")
@@ -214,9 +214,10 @@ if not st.session_state['data'].empty:
     total_rows = len(display_df)
     st.info(f"📊 Showing **{total_rows}** rows across **{unique_dates}** trading dates")
     
-    # Download Button
+    # Download Button - use formatted export data
     st.divider()
-    csv = st.session_state['data'].to_csv(index=False).encode('utf-8')
+    export_df = prepare_export_data(st.session_state['data'])
+    csv = export_df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Download Full Historical Database (CSV)",
         data=csv,

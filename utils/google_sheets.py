@@ -142,6 +142,9 @@ def load_from_google_sheets():
 def save_to_google_sheets(df):
     """Save DataFrame to Google Sheets with proper formatting."""
     try:
+        # Import here to avoid circular import
+        from utils.display import prepare_export_data
+        
         client = get_google_sheets_client()
         if client is None:
             return False
@@ -152,35 +155,12 @@ def save_to_google_sheets(df):
         
         worksheet = spreadsheet.sheet1
         
-        # Convert DataFrame to formatted version for display
-        df_copy = df.copy()
-        
-        # Format Date column
-        if 'Date' in df_copy.columns:
-            df_copy['Date'] = pd.to_datetime(df_copy['Date']).dt.strftime('%d.%m.%y')
-        
-        # Format numeric columns
-        for col in df_copy.columns:
-            if col in ['Date', 'Client Type']:
-                continue
-            
-            if df_copy[col].dtype in ['float64', 'float32']:
-                # Format based on column type
-                if 'Ratio' in col:
-                    df_copy[col] = df_copy[col].apply(lambda x: f'{x:.2f}' if pd.notna(x) else '')
-                elif '%' in col:
-                    df_copy[col] = df_copy[col].apply(lambda x: f'{x:.2f}%' if pd.notna(x) else '')
-                elif col in ['Nifty Spot', 'Nifty Diff']:
-                    df_copy[col] = df_copy[col].apply(lambda x: f'{x:.2f}' if pd.notna(x) else '')
-                else:
-                    df_copy[col] = df_copy[col].apply(lambda x: f'{x:,.0f}' if pd.notna(x) else '')
-        
-        # Replace any remaining NaN/None with empty string
-        df_copy = df_copy.fillna('')
+        # Use shared export formatting function
+        df_export = prepare_export_data(df)
         
         # Convert to list of lists
-        headers = df_copy.columns.tolist()
-        data_rows = df_copy.values.tolist()
+        headers = df_export.columns.tolist()
+        data_rows = df_export.values.tolist()
         
         # Clear and write
         worksheet.clear()
@@ -194,4 +174,5 @@ def save_to_google_sheets(df):
     except Exception as e:
         st.error(f"Error saving to Google Sheets: {e}")
         return False
+
 
