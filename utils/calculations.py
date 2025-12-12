@@ -67,7 +67,8 @@ def process_data(df, current_nifty_spot):
                        (df['Option Index Put Long'] + df['Option Index Call Short'])
     
     # Create mask for non-TOTAL rows (diff calculations only apply to actual participants)
-    non_total_mask = df['Client Type'].str.upper() != 'TOTAL'
+    # Handle case variations and whitespace
+    non_total_mask = ~df['Client Type'].str.strip().str.upper().isin(['TOTAL', 'TOTALS', 'GRAND TOTAL'])
     
     # Change of Character (CoC) and ROC - only for non-TOTAL rows
     df['NET CALL (CoC)'] = float('nan')
@@ -146,11 +147,12 @@ def process_data(df, current_nifty_spot):
     df['Nifty Diff'] = df.groupby('Client Type')['Nifty Spot'].diff(periods=-1)
 
     # --- SECTION: FUTURE RATIOS ---
-    # Get total for each date (sum of non-TOTAL rows, or the TOTAL row value)
-    total_long_per_date = df[df['Client Type'].str.upper() == 'TOTAL'].groupby('Date')['Future Index Long'].first()
-    total_short_per_date = df[df['Client Type'].str.upper() == 'TOTAL'].groupby('Date')['Future Index Short'].first()
+    # Get total for each date (from TOTAL row)
+    is_total_row = df['Client Type'].str.strip().str.upper().isin(['TOTAL', 'TOTALS', 'GRAND TOTAL'])
+    total_long_per_date = df[is_total_row].groupby('Date')['Future Index Long'].first()
+    total_short_per_date = df[is_total_row].groupby('Date')['Future Index Short'].first()
     
-    # If no TOTAL row, calculate from sum
+    # If no TOTAL row, calculate from sum of non-TOTAL rows
     if total_long_per_date.empty:
         total_long_per_date = df[non_total_mask].groupby('Date')['Future Index Long'].sum()
         total_short_per_date = df[non_total_mask].groupby('Date')['Future Index Short'].sum()
