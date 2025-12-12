@@ -1,0 +1,397 @@
+# Display functions - HTML table generation and formatting
+import pandas as pd
+
+
+# Header structure for the data table
+HEADER_STRUCTURE = {
+    'groups': [
+        {
+            'name': '',
+            'color': '#FFFF99',
+            'subgroups': [
+                {'name': 'Date', 'columns': [('Date', 'Date')]},
+                {'name': 'Client Type', 'columns': [('Client Type', 'Client Type')]}
+            ]
+        },
+        {
+            'name': 'OPTION',
+            'color': '#00FF00',
+            'subgroups': [
+                {'name': 'NET DIFF', 'columns': [('NET DIFF', '')]},
+                {'name': 'ROC', 'columns': [('Option ROC', '')]},
+                {'name': 'ABSULATE CHANGE', 'columns': [('Abs Change Call', 'call Index'), ('Abs Change Put', 'Put Index')]},
+                {'name': 'OPTION', 'columns': [('Option NET', 'NET')]},
+                {'name': 'NET CALL', 'columns': [('NET CALL (CoC)', '')]},
+                {'name': 'NET PUT', 'columns': [('NET PUT (CoC)', '')]}
+            ]
+        },
+        {
+            'name': 'FUTURE',
+            'color': '#00FFFF',
+            'subgroups': [
+                {'name': 'FUTURE', 'columns': [('Future Net', 'NET')]},
+                {'name': 'ROC', 'columns': [('Future ROC', '')]},
+                {'name': 'ABSULATE CHANGE', 'columns': [('Fut Abs Chg Long', 'LONG'), ('Fut Abs Chg Short', 'SHORT')]},
+                {'name': 'L/S RATIO', 'columns': [('Fut L/S Ratio', '')]},
+                {'name': 'LONG', 'columns': [('Fut Long %', '%')]},
+                {'name': 'SHORT', 'columns': [('Fut Short %', '%')]}
+            ]
+        },
+        {
+            'name': 'FUTURE STOCK',
+            'color': '#FFFF00',
+            'subgroups': [
+                {'name': 'FUTURE', 'columns': [('Stk Fut Net', 'NET')]},
+                {'name': 'ROC', 'columns': [('Stk Fut ROC', '')]},
+                {'name': 'ABSULATE CHANGE', 'columns': [('Stk Abs Chg Long', 'LONG'), ('Stk Abs Chg Short', 'SHORT')]},
+                {'name': 'L/S RATIO', 'columns': [('Stk L/S Ratio', '')]},
+                {'name': 'LONG', 'columns': [('Stk Long %', '%')]},
+                {'name': 'SHORT', 'columns': [('Stk Short %', '%')]}
+            ]
+        },
+        {
+            'name': '',
+            'color': '#90EE90',
+            'subgroups': [
+                {'name': 'NIFTY', 'columns': [('Nifty Diff', 'difff')]},
+                {'name': 'NIFTY', 'columns': [('Nifty Spot', 'spot')]}
+            ]
+        },
+        {
+            'name': 'FUTURE',
+            'color': '#FF00FF',
+            'subgroups': [
+                {'name': 'TOTAL LONG', 'columns': [('Future Total Long %', '%')]},
+                {'name': 'TOTAL SHORT', 'columns': [('Future Total Short %', '%')]}
+            ]
+        }
+    ]
+}
+
+
+def get_table_css():
+    """Returns the CSS styles for the data table."""
+    return """
+    body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        background-color: transparent;
+    }
+    .table-wrapper {
+        position: relative;
+        padding-top: 50px;
+    }
+    .maximize-btn {
+        position: absolute;
+        top: 5px;
+        right: 10px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white !important;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+        transition: all 0.3s ease;
+        z-index: 100;
+    }
+    .maximize-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.6);
+    }
+    .styled-table-container {
+        overflow-x: auto;
+        max-height: 600px;
+        overflow-y: auto;
+        border: 2px solid #333;
+        border-radius: 8px;
+        background-color: #ffffff !important;
+    }
+    .styled-table-container::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    .styled-table-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+    }
+    .styled-table-container::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 4px;
+    }
+    .styled-table-container::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+    .styled-table-container.fullscreen {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        overflow-x: auto !important;
+        overflow-y: auto !important;
+        border-radius: 0 !important;
+        margin: 0 !important;
+        padding: 15px !important;
+        box-sizing: border-box !important;
+        background-color: #ffffff !important;
+    }
+    .styled-table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 12px;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        background-color: #ffffff !important;
+        color: #000000 !important;
+    }
+    .styled-table th, .styled-table td {
+        padding: 6px 10px;
+        text-align: center;
+        border: 1px solid #333;
+        white-space: nowrap;
+        color: #000000 !important;
+    }
+    .styled-table .layer1-header {
+        font-weight: bold;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        border: 2px solid #333;
+        color: #000000 !important;
+    }
+    .styled-table .layer2-header {
+        font-weight: 600;
+        font-size: 11px;
+        border: 1px solid #333;
+        color: #000000 !important;
+    }
+    .styled-table .layer3-header {
+        font-weight: 500;
+        font-size: 10px;
+        border: 1px solid #333;
+        color: #000000 !important;
+    }
+    .styled-table tbody tr:nth-child(even) {
+        background-color: #f8f9fa !important;
+    }
+    .styled-table tbody tr:hover {
+        background-color: #e8f4f8 !important;
+    }
+    .styled-table td {
+        font-size: 11px;
+        background-color: inherit;
+        color: #000000 !important;
+    }
+    .styled-table td.negative-value {
+        color: #dc3545 !important;
+        font-weight: 600;
+    }
+    .styled-table .date-group-1 { background-color: #ffffff !important; }
+    .styled-table .date-group-2 { background-color: #f0f8ff !important; }
+    .close-fullscreen-btn {
+        position: fixed;
+        top: 15px;
+        right: 25px;
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white !important;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        z-index: 10001;
+        display: none;
+        box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
+        transition: all 0.3s ease;
+    }
+    .close-fullscreen-btn:hover {
+        transform: scale(1.05);
+        box-shadow: 0 6px 20px rgba(220, 53, 69, 0.6);
+    }
+    """
+
+
+def get_table_javascript():
+    """Returns the JavaScript for fullscreen functionality."""
+    return """
+    function enterFullscreen() {
+        var container = document.getElementById('table-container');
+        var btn = document.getElementById('maximize-btn');
+        var closeBtn = document.getElementById('close-fullscreen-btn');
+        
+        if (container.requestFullscreen) {
+            container.requestFullscreen();
+        } else if (container.webkitRequestFullscreen) {
+            container.webkitRequestFullscreen();
+        } else if (container.msRequestFullscreen) {
+            container.msRequestFullscreen();
+        }
+        
+        container.classList.add('fullscreen');
+        closeBtn.style.display = 'block';
+        btn.style.display = 'none';
+    }
+    
+    function exitFullscreen() {
+        var container = document.getElementById('table-container');
+        var btn = document.getElementById('maximize-btn');
+        var closeBtn = document.getElementById('close-fullscreen-btn');
+        
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+        
+        container.classList.remove('fullscreen');
+        closeBtn.style.display = 'none';
+        btn.style.display = 'flex';
+    }
+    
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleFullscreenChange);
+    
+    function handleFullscreenChange() {
+        var container = document.getElementById('table-container');
+        var btn = document.getElementById('maximize-btn');
+        var closeBtn = document.getElementById('close-fullscreen-btn');
+        
+        if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+            container.classList.remove('fullscreen');
+            closeBtn.style.display = 'none';
+            btn.style.display = 'flex';
+        }
+    }
+    """
+
+
+def format_value_with_class(value, col):
+    """Returns (formatted_string, css_class) tuple for a cell value."""
+    if pd.isna(value):
+        return '-', ''
+    try:
+        is_negative = False
+        formatted = ''
+        
+        if isinstance(value, (int, float)):
+            is_negative = value < 0
+            
+            if 'Ratio' in col:
+                formatted = f'{value:.2f}'
+            elif '%' in col:
+                formatted = f'{value:.2f}%'
+            elif col in ['Nifty Spot', 'Nifty Diff']:
+                formatted = f'{value:.2f}'
+            else:
+                formatted = f'{value:,.0f}'
+        else:
+            formatted = str(value)
+        
+        css_class = 'negative-value' if is_negative else ''
+        return formatted, css_class
+    except:
+        return str(value), ''
+
+
+def generate_table_html(display_df):
+    """Generates the complete HTML for the data table."""
+    
+    # Filter to only include columns that exist in the dataframe
+    filtered_groups = []
+    for group in HEADER_STRUCTURE['groups']:
+        filtered_subgroups = []
+        for subgroup in group['subgroups']:
+            filtered_cols = [(col, label) for col, label in subgroup['columns'] if col in display_df.columns]
+            if filtered_cols:
+                filtered_subgroups.append({'name': subgroup['name'], 'columns': filtered_cols})
+        if filtered_subgroups:
+            filtered_groups.append({
+                'name': group['name'],
+                'color': group['color'],
+                'subgroups': filtered_subgroups
+            })
+    
+    # Build all valid columns in order
+    all_display_cols = []
+    for group in filtered_groups:
+        for subgroup in group['subgroups']:
+            for col, _ in subgroup['columns']:
+                all_display_cols.append(col)
+    
+    # Build HTML
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>{get_table_css()}</style>
+    </head>
+    <body>
+        <div class="table-wrapper">
+            <button id="maximize-btn" class="maximize-btn" onclick="enterFullscreen()">⛶ Maximize</button>
+            <div id="table-container" class="styled-table-container">
+                <table class="styled-table">
+                    <thead><tr>"""
+    
+    # Add Layer 1 headers
+    for group in filtered_groups:
+        total_cols = sum(len(sg['columns']) for sg in group['subgroups'])
+        if group['name']:
+            html += f'<th colspan="{total_cols}" class="layer1-header" style="background-color: {group["color"]};">{group["name"]}</th>'
+        else:
+            html += f'<th colspan="{total_cols}" class="layer1-header" style="background-color: {group["color"]};"></th>'
+    html += '</tr><tr>'
+    
+    # Add Layer 2 headers
+    for group in filtered_groups:
+        for subgroup in group['subgroups']:
+            colspan = len(subgroup['columns'])
+            html += f'<th colspan="{colspan}" class="layer2-header" style="background-color: {group["color"]}DD;">{subgroup["name"]}</th>'
+    html += '</tr><tr>'
+    
+    # Add Layer 3 headers
+    for group in filtered_groups:
+        for subgroup in group['subgroups']:
+            for col, label in subgroup['columns']:
+                display_label = label if label else ''
+                html += f'<th class="layer3-header" style="background-color: {group["color"]}99;">{display_label}</th>'
+    html += '</tr></thead><tbody>'
+    
+    # Add data rows
+    prev_date = None
+    date_group = 0
+    for idx, row in display_df.iterrows():
+        current_date = row.get('Date', '')
+        if current_date != prev_date:
+            date_group = 1 - date_group
+            prev_date = current_date
+        
+        row_class = f'date-group-{date_group + 1}'
+        html += f'<tr class="{row_class}">'
+        for col in all_display_cols:
+            value = row.get(col, '-')
+            formatted, cell_class = format_value_with_class(value, col)
+            if cell_class:
+                html += f'<td class="{cell_class}">{formatted}</td>'
+            else:
+                html += f'<td>{formatted}</td>'
+        html += '</tr>'
+    
+    html += f"""</tbody></table>
+            <button id="close-fullscreen-btn" class="close-fullscreen-btn" onclick="exitFullscreen()">✕ Exit Fullscreen</button>
+            </div>
+        </div>
+        <script>{get_table_javascript()}</script>
+    </body>
+    </html>
+    """
+    
+    return html
