@@ -156,10 +156,7 @@ if st.sidebar.button("Submit & Process"):
             raw_df = read_file_smart(uploaded_file)
             
             if raw_df is not None:
-                # Process ONLY the new uploaded data
-                new_processed = process_data(raw_df, nifty_spot_input)
-                
-                # Load existing data from sheets (already calculated, keep as-is)
+                # Load existing calculated data
                 existing_df = pd.DataFrame()
                 
                 if st.session_state.get('use_cloud_db', False):
@@ -172,12 +169,78 @@ if st.sidebar.button("Submit & Process"):
                     existing_df = pd.read_csv(DB_FILE)
                     existing_df['Date'] = pd.to_datetime(existing_df['Date'])
                 
+                # Process the new data
+                new_processed = process_data(raw_df, nifty_spot_input)
+                new_dates = pd.to_datetime(new_processed['Date']).unique()
+                
                 if not existing_df.empty:
-                    # Remove dates that are being uploaded (replace with new data)
-                    new_dates = pd.to_datetime(new_processed['Date']).unique()
+                    # Remove dates that are being uploaded (they'll be replaced)
                     existing_df = existing_df[~existing_df['Date'].isin(new_dates)]
                     
-                    # Combine: new processed data + old data (keep old as-is)
+                    # For diff calculations: use historical values if available
+                    # Get the most recent previous date's data for comparison
+                    prev_date_data = existing_df[existing_df['Date'] == existing_df['Date'].max()].copy() if not existing_df.empty else pd.DataFrame()
+                    
+                    if not prev_date_data.empty:
+                        # Recalculate the new data's diff columns using previous data
+                        from utils.display import get_display_columns
+                        display_cols = get_display_columns()
+                        
+                        # For columns that need diff (ROC, CoC, etc.), calculate manually
+                        for client_type in new_processed['Client Type'].unique():
+                            new_mask = new_processed['Client Type'] == client_type
+                            prev_mask = prev_date_data['Client Type'] == client_type
+                            
+                            if prev_mask.any():
+                                prev_row = prev_date_data[prev_mask].iloc[0]
+                                
+                                # Calculate NET CALL (CoC) - diff of Abs Change Call
+                                if 'Abs Change Call' in new_processed.columns and 'Abs Change Call' in prev_date_data.columns:
+                                    new_val = new_processed.loc[new_mask, 'Abs Change Call'].iloc[0]
+                                    prev_val = prev_row.get('Abs Change Call', float('nan'))
+                                    if pd.notna(prev_val):
+                                        new_processed.loc[new_mask, 'NET CALL (CoC)'] = new_val - prev_val
+                                
+                                # Calculate NET PUT (CoC) - diff of Abs Change Put
+                                if 'Abs Change Put' in new_processed.columns and 'Abs Change Put' in prev_date_data.columns:
+                                    new_val = new_processed.loc[new_mask, 'Abs Change Put'].iloc[0]
+                                    prev_val = prev_row.get('Abs Change Put', float('nan'))
+                                    if pd.notna(prev_val):
+                                        new_processed.loc[new_mask, 'NET PUT (CoC)'] = new_val - prev_val
+                                
+                                # Recalculate NET DIFF
+                                if 'NET CALL (CoC)' in new_processed.columns and 'NET PUT (CoC)' in new_processed.columns:
+                                    new_processed.loc[new_mask, 'NET DIFF'] = new_processed.loc[new_mask, 'NET CALL (CoC)'] - new_processed.loc[new_mask, 'NET PUT (CoC)']
+                                
+                                # Calculate Option ROC - diff of NET DIFF
+                                if 'NET DIFF' in prev_date_data.columns:
+                                    new_val = new_processed.loc[new_mask, 'NET DIFF'].iloc[0]
+                                    prev_val = prev_row.get('NET DIFF', float('nan'))
+                                    if pd.notna(prev_val) and pd.notna(new_val):
+                                        new_processed.loc[new_mask, 'Option ROC'] = new_val - prev_val
+                                
+                                # Future ROC
+                                if 'Future Net' in new_processed.columns and 'Future Net' in prev_date_data.columns:
+                                    new_val = new_processed.loc[new_mask, 'Future Net'].iloc[0]
+                                    prev_val = prev_row.get('Future Net', float('nan'))
+                                    if pd.notna(prev_val):
+                                        new_processed.loc[new_mask, 'Future ROC'] = new_val - prev_val
+                                
+                                # Stk Fut ROC
+                                if 'Stk Fut Net' in new_processed.columns and 'Stk Fut Net' in prev_date_data.columns:
+                                    new_val = new_processed.loc[new_mask, 'Stk Fut Net'].iloc[0]
+                                    prev_val = prev_row.get('Stk Fut Net', float('nan'))
+                                    if pd.notna(prev_val):
+                                        new_processed.loc[new_mask, 'Stk Fut ROC'] = new_val - prev_val
+                                
+                                # Nifty Diff
+                                if 'Nifty Spot' in new_processed.columns and 'Nifty Spot' in prev_date_data.columns:
+                                    new_val = new_processed.loc[new_mask, 'Nifty Spot'].iloc[0]
+                                    prev_val = prev_row.get('Nifty Spot', float('nan'))
+                                    if pd.notna(prev_val) and pd.notna(new_val):
+                                        new_processed.loc[new_mask, 'Nifty Diff'] = new_val - prev_val
+                    
+                    # Combine new + old
                     combined_df = pd.concat([new_processed, existing_df], ignore_index=True)
                 else:
                     combined_df = new_processed.copy()
