@@ -154,8 +154,13 @@ if st.session_state.get('use_cloud_db', False):
 else:
     st.sidebar.caption("💾 **Local Mode** • CSV File")
 
-# Compact diagnostics expander
-with st.sidebar.expander("🔧 Diagnostics", expanded=False):
+# Compact diagnostics
+if hasattr(st.sidebar, "popover"):
+    diag_container = st.sidebar.popover("🔧 Diagnostics")
+else:
+    diag_container = st.sidebar.expander("🔧 Diagnostics", expanded=False)
+
+with diag_container:
     has_secrets = False
     try:
         if hasattr(st, 'secrets') and len(st.secrets) > 0:
@@ -252,8 +257,12 @@ elif uploaded_file is None:
     st.sidebar.info("💡 Upload a file to auto-detect Nifty price")
 
 
+
 # --- SUBMIT BUTTON ---
-if st.sidebar.button("Submit & Process"):
+st.sidebar.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+st.sidebar.divider()
+
+if st.sidebar.button("Submit & Process", type="primary", use_container_width=True):
     if uploaded_file is not None:
         with st.spinner("Reading and Processing..."):
             raw_df = read_file_smart(uploaded_file)
