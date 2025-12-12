@@ -132,7 +132,7 @@ def load_from_google_sheets():
             return pd.DataFrame()
         
         # Row 3 (index 2) contains actual column names
-        header_row = all_values[2]
+        header_row = all_values[2] if len(all_values) > 2 else []
         
         # Data rows start after 3 header rows
         data_rows = all_values[3:]
@@ -140,8 +140,38 @@ def load_from_google_sheets():
         if not data_rows:
             return pd.DataFrame()
         
-        # Use row 3 as column names
-        df = pd.DataFrame(data_rows, columns=header_row)
+        # Get max columns from data rows
+        max_cols = max(len(row) for row in data_rows) if data_rows else 0
+        
+        # Extend header_row to match data columns if needed
+        while len(header_row) < max_cols:
+            header_row.append(f'Col_{len(header_row)}')
+        
+        # Replace empty column names and handle duplicates
+        seen = {}
+        clean_headers = []
+        for i, col in enumerate(header_row[:max_cols]):
+            if not col or col.strip() == '':
+                col = f'Col_{i}'
+            # Handle duplicates
+            if col in seen:
+                seen[col] += 1
+                col = f'{col}_{seen[col]}'
+            else:
+                seen[col] = 0
+            clean_headers.append(col)
+        
+        # Normalize data rows to have same number of columns
+        normalized_rows = []
+        for row in data_rows:
+            if len(row) < max_cols:
+                row = row + [''] * (max_cols - len(row))
+            elif len(row) > max_cols:
+                row = row[:max_cols]
+            normalized_rows.append(row)
+        
+        # Create DataFrame
+        df = pd.DataFrame(normalized_rows, columns=clean_headers)
         
         # Convert Date column
         if 'Date' in df.columns:
@@ -149,7 +179,7 @@ def load_from_google_sheets():
         
         # Convert numeric columns from strings
         for col in df.columns:
-            if col in ['Date', 'Client Type', '']:
+            if col in ['Date', 'Client Type'] or col.startswith('Col_'):
                 continue
             df[col] = pd.to_numeric(df[col], errors='coerce')
         
