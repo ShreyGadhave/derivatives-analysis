@@ -112,8 +112,11 @@ def get_or_create_spreadsheet(client):
 
 
 def load_from_google_sheets():
-    """Load data from Google Sheets."""
+    """Load data from Google Sheets (handles 3-row headers)."""
     try:
+        # Import to get column names
+        from utils.display import get_display_columns
+        
         client = get_google_sheets_client()
         if client is None:
             return None
@@ -124,23 +127,34 @@ def load_from_google_sheets():
         
         worksheet = spreadsheet.sheet1
         
-        # Get all records (row 1 is headers, data starts row 2)
-        data = worksheet.get_all_records()
+        # Get all values (rows 1-3 are headers, data starts row 4)
+        all_values = worksheet.get_all_values()
         
-        if not data:
+        if not all_values or len(all_values) <= 3:
+            # Empty or only headers
             return pd.DataFrame()
         
-        df = pd.DataFrame(data)
+        # Data rows start after 3 header rows
+        data_rows = all_values[3:]
+        
+        if not data_rows:
+            return pd.DataFrame()
+        
+        # Use display columns as headers
+        display_cols = get_display_columns()
+        num_cols = len(data_rows[0]) if data_rows else 0
+        headers = display_cols[:num_cols]
+        
+        df = pd.DataFrame(data_rows, columns=headers)
         
         # Convert Date column
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         
-        # Convert numeric columns from strings where needed
+        # Convert numeric columns from strings
         for col in df.columns:
             if col in ['Date', 'Client Type']:
                 continue
-            # Try to convert to numeric
             df[col] = pd.to_numeric(df[col], errors='coerce')
         
         return df
@@ -152,10 +166,10 @@ def load_from_google_sheets():
 
 
 def save_to_google_sheets(df):
-    """Save only calculated/display columns to Google Sheets (not raw input columns)."""
+    """Save calculated data with 3-layer headers to Google Sheets."""
     try:
-        # Import to get display columns
-        from utils.display import get_display_columns
+        # Import to get display columns and headers
+        from utils.display import get_display_columns, get_header_rows
         
         client = get_google_sheets_client()
         if client is None:
@@ -167,8 +181,11 @@ def save_to_google_sheets(df):
         
         worksheet = spreadsheet.sheet1
         
-        # Get ALL display columns (calculated results)
+        # Get ALL display columns
         display_cols = get_display_columns()
+        
+        # Get 3-layer headers
+        layer1, layer2, layer3 = get_header_rows()
         
         # Create a copy with only display columns, adding missing ones as empty
         df_copy = pd.DataFrame()
@@ -186,11 +203,14 @@ def save_to_google_sheets(df):
         # Replace NaN with empty string for JSON compatibility
         df_copy = df_copy.fillna('')
         
-        # Build rows with headers
-        headers = df_copy.columns.tolist()
+        # Build rows: 3 header rows + data rows
         data_rows = df_copy.values.tolist()
         
-        all_rows = [headers] + data_rows
+        all_rows = [
+            layer1,  # Row 1: Main groups (OPTION, FUTURE, etc.)
+            layer2,  # Row 2: Subgroups (NET DIFF, ROC, etc.)
+            layer3,  # Row 3: Column labels
+        ] + data_rows
         
         # Clear and write
         worksheet.clear()
@@ -201,5 +221,4 @@ def save_to_google_sheets(df):
     except Exception as e:
         st.error(f"Error saving to Google Sheets: {e}")
         return False
-
 
