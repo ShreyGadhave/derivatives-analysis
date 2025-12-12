@@ -570,19 +570,16 @@ st.title("📊 Derivatives Data Analysis Tool")
 if 'data' not in st.session_state:
     st.session_state['data'] = load_database()
 
-# Show storage mode indicator in sidebar
-st.sidebar.markdown("---")
+# --- SIDEBAR (Top: Compact status indicator) ---
+# Compact cloud mode indicator at the very top
 if st.session_state.get('use_cloud_db', False):
-    st.sidebar.success("☁️ **Cloud Mode**: Google Sheets")
+    st.sidebar.caption("☁️ **Cloud Mode** • Google Sheets")
 else:
-    st.sidebar.warning("💾 **Local Mode**: CSV File")
+    st.sidebar.caption("💾 **Local Mode** • CSV File")
 
-# Debug/Diagnostics section (collapsible)
-with st.sidebar.expander("🔧 Connection Diagnostics"):
-    st.write("**Debug Info:**")
-    st.write(f"• gspread available: `{GSHEETS_AVAILABLE}`")
-    
-    # Safely check for secrets (avoid error when secrets.toml doesn't exist)
+# Compact diagnostics expander
+with st.sidebar.expander("🔧 Diagnostics", expanded=False):
+    # Safely check for secrets
     has_secrets = False
     try:
         if hasattr(st, 'secrets') and len(st.secrets) > 0:
@@ -590,49 +587,35 @@ with st.sidebar.expander("🔧 Connection Diagnostics"):
     except Exception:
         has_secrets = False
     
-    st.write(f"• Secrets configured: `{has_secrets}`")
+    st.caption(f"gspread: `{GSHEETS_AVAILABLE}` | secrets: `{has_secrets}` | cloud: `{st.session_state.get('use_cloud_db', False)}`")
     
     if has_secrets:
         try:
             sa_email = st.secrets['gcp_service_account'].get('client_email', 'N/A')
-            st.write(f"• Service Account: `{sa_email[:30]}...`")
-        except Exception as e:
-            st.write(f"• Error reading secrets: `{e}`")
+            st.caption(f"SA: `{sa_email[:25]}...`")
+        except Exception:
+            pass
     
-    st.write(f"• Cloud mode active: `{st.session_state.get('use_cloud_db', False)}`")
-    
-    # Test connection button
-    if st.button("🔄 Test Google Sheets Connection", key="test_gsheets"):
+    if st.button("🔄 Test Connection", key="test_gsheets", use_container_width=True):
         if GSHEETS_AVAILABLE and has_secrets:
             try:
                 client = get_google_sheets_client()
                 if client:
-                    st.success("✅ Client authorized!")
                     spreadsheet = get_or_create_spreadsheet(client)
                     if spreadsheet:
-                        st.success(f"✅ Spreadsheet accessible: {spreadsheet.title}")
-                        ws = spreadsheet.sheet1
-                        row_count = ws.row_count
-                        st.write(f"📊 Sheet has {row_count} rows")
+                        st.success(f"✅ Connected: {spreadsheet.title}")
                     else:
-                        st.error("❌ Could not access spreadsheet")
+                        st.error("❌ Spreadsheet error")
                 else:
-                    st.error("❌ Client authorization failed")
+                    st.error("❌ Auth failed")
             except Exception as e:
-                st.error(f"❌ Connection error: {e}")
+                st.error(f"❌ {e}")
         else:
-            st.warning("⚠️ Google Sheets not available or secrets not configured")
+            st.warning("⚠️ Not configured")
 
 st.sidebar.markdown("---")
 
-# Show status of database
-if not st.session_state['data'].empty:
-    latest_db_date = st.session_state['data']['Date'].max().date()
-    st.info(f"📂 Database Loaded. Latest Data Available: **{latest_db_date}**")
-else:
-    st.warning("📂 Database is empty. Please upload data.")
-
-# --- SIDEBAR ---
+# --- SIDEBAR: Data Entry ---
 st.sidebar.header("Data Entry")
 uploaded_file = st.sidebar.file_uploader("Upload Daily Participant File", type=['csv', 'xlsx'])
 
