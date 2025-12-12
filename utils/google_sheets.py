@@ -112,8 +112,11 @@ def get_or_create_spreadsheet(client):
 
 
 def load_from_google_sheets():
-    """Load data from Google Sheets."""
+    """Load data from Google Sheets (handles 3-row headers)."""
     try:
+        # Import to get column order
+        from utils.display import get_display_columns
+        
         client = get_google_sheets_client()
         if client is None:
             return None
@@ -123,20 +126,44 @@ def load_from_google_sheets():
             return None
         
         worksheet = spreadsheet.sheet1
-        data = worksheet.get_all_records()
         
-        if not data:
+        # Get all values (including headers)
+        all_values = worksheet.get_all_values()
+        
+        if not all_values or len(all_values) <= 3:
+            # Empty or only headers
             return pd.DataFrame()
         
-        df = pd.DataFrame(data)
+        # Row 3 (index 2) contains the actual column names we need
+        # But we use our known display columns for consistency
+        display_cols = get_display_columns()
+        
+        # Get the header row (row 3, index 2) to determine actual columns
+        header_row = all_values[2] if len(all_values) > 2 else []
+        
+        # Data starts from row 4 (index 3)
+        data_rows = all_values[3:]
+        
+        if not data_rows:
+            return pd.DataFrame()
+        
+        # Create DataFrame - use display columns as headers
+        # Match the number of columns in data
+        num_cols = len(data_rows[0]) if data_rows else 0
+        headers = display_cols[:num_cols] if len(display_cols) >= num_cols else display_cols + [f'Col_{i}' for i in range(len(display_cols), num_cols)]
+        
+        df = pd.DataFrame(data_rows, columns=headers[:len(data_rows[0])])
+        
+        # Convert Date column
         if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'])
+            df['Date'] = pd.to_datetime(df['Date'], format='%d.%m.%y', errors='coerce')
         
         return df
         
     except Exception as e:
         st.error(f"Error loading from Google Sheets: {e}")
         return None
+
 
 
 def save_to_google_sheets(df):
