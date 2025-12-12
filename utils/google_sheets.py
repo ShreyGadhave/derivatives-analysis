@@ -112,7 +112,7 @@ def get_or_create_spreadsheet(client):
 
 
 def load_from_google_sheets():
-    """Load data from Google Sheets (handles 3-row headers)."""
+    """Load data from Google Sheets (handles 3-row headers and formatted values)."""
     try:
         # Import to get column order
         from utils.display import get_display_columns
@@ -134,12 +134,8 @@ def load_from_google_sheets():
             # Empty or only headers
             return pd.DataFrame()
         
-        # Row 3 (index 2) contains the actual column names we need
-        # But we use our known display columns for consistency
+        # Use our known display columns for consistency
         display_cols = get_display_columns()
-        
-        # Get the header row (row 3, index 2) to determine actual columns
-        header_row = all_values[2] if len(all_values) > 2 else []
         
         # Data starts from row 4 (index 3)
         data_rows = all_values[3:]
@@ -148,7 +144,6 @@ def load_from_google_sheets():
             return pd.DataFrame()
         
         # Create DataFrame - use display columns as headers
-        # Match the number of columns in data
         num_cols = len(data_rows[0]) if data_rows else 0
         headers = display_cols[:num_cols] if len(display_cols) >= num_cols else display_cols + [f'Col_{i}' for i in range(len(display_cols), num_cols)]
         
@@ -157,6 +152,26 @@ def load_from_google_sheets():
         # Convert Date column
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'], format='%d.%m.%y', errors='coerce')
+        
+        # Convert formatted strings back to numbers for all numeric columns
+        for col in df.columns:
+            if col in ['Date', 'Client Type']:
+                continue
+            
+            # Convert formatted strings to numbers
+            def parse_number(val):
+                if pd.isna(val) or val == '' or val == '-':
+                    return float('nan')
+                try:
+                    # Remove commas and percentage signs
+                    val_str = str(val).replace(',', '').replace('%', '').strip()
+                    if val_str == '':
+                        return float('nan')
+                    return float(val_str)
+                except (ValueError, TypeError):
+                    return float('nan')
+            
+            df[col] = df[col].apply(parse_number)
         
         return df
         
