@@ -167,17 +167,21 @@ def save_to_google_sheets(df):
         
         worksheet = spreadsheet.sheet1
         
-        # Get only display columns (calculated results)
+        # Get ALL display columns (calculated results)
         display_cols = get_display_columns()
-        available_cols = [col for col in display_cols if col in df.columns]
         
-        # Filter to only display columns
-        df_copy = df[available_cols].copy()
+        # Create a copy with only display columns, adding missing ones as empty
+        df_copy = pd.DataFrame()
+        for col in display_cols:
+            if col in df.columns:
+                df_copy[col] = df[col]
+            else:
+                df_copy[col] = ''  # Add missing columns as empty
         
         # Sort by date descending
         if 'Date' in df_copy.columns:
             df_copy = df_copy.sort_values(by=['Date', 'Client Type'], ascending=[False, True])
-            df_copy['Date'] = pd.to_datetime(df_copy['Date']).dt.strftime('%Y-%m-%d')
+            df_copy['Date'] = pd.to_datetime(df_copy['Date'], errors='coerce').dt.strftime('%Y-%m-%d')
         
         # Replace NaN with empty string for JSON compatibility
         df_copy = df_copy.fillna('')
@@ -197,4 +201,5 @@ def save_to_google_sheets(df):
     except Exception as e:
         st.error(f"Error saving to Google Sheets: {e}")
         return False
+
 
