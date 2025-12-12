@@ -418,9 +418,10 @@ def generate_calendar_html(available_dates):
     
     # Convert dates to pandas datetime index safely
     try:
-        dt_index = pd.to_datetime(available_dates, errors='coerce')
-        # Filter out NaT and sort
-        dates = dt_index[dt_index.notna()].sort_values()
+        # Wrap in pd.Index to ensure we have Index methods like dropna/sort_values
+        # pd.to_datetime might return DatetimeArray which misses some methods
+        dt_idx = pd.Index(pd.to_datetime(available_dates, errors='coerce'))
+        dates = dt_idx.dropna().sort_values()
     except Exception as e:
         return f"<div>Error processing dates: {str(e)}</div>"
 
