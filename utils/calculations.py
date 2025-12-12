@@ -52,7 +52,8 @@ def process_data(df, current_nifty_spot):
     df['Date'] = pd.to_datetime(df['Date'], dayfirst=True, errors='coerce')
     df = df.dropna(subset=['Date'])
     
-    # Sort for calculations
+    # Sort for calculations (Newest date first is standard for display, but for diff we need specific order)
+    # diff(periods=-1) with descending date means: New - Old (which is correct for ROC)
     df = df.sort_values(by=['Date', 'Client Type'], ascending=[False, True])
     
     # Assign Nifty Spot to the LATEST date only
@@ -66,49 +67,29 @@ def process_data(df, current_nifty_spot):
     df['Option NET'] = (df['Option Index Call Long'] + df['Option Index Put Short']) - \
                        (df['Option Index Put Long'] + df['Option Index Call Short'])
     
-    # Create mask for non-TOTAL rows (diff calculations only apply to actual participants)
-    # Handle case variations and whitespace
-    non_total_mask = ~df['Client Type'].str.strip().str.upper().isin(['TOTAL', 'TOTALS', 'GRAND TOTAL'])
-    
-    # Change of Character (CoC) and ROC - only for non-TOTAL rows
-    df['NET CALL (CoC)'] = float('nan')
-    df['NET PUT (CoC)'] = float('nan')
-    df['NET DIFF'] = float('nan')
-    df['Option ROC'] = float('nan')
-    
-    if non_total_mask.any():
-        df_non_total = df[non_total_mask].copy()
-        df_non_total['NET CALL (CoC)'] = df_non_total.groupby('Client Type')['Abs Change Call'].diff(periods=-1)
-        df_non_total['NET PUT (CoC)'] = df_non_total.groupby('Client Type')['Abs Change Put'].diff(periods=-1)
-        df_non_total['NET DIFF'] = df_non_total['NET CALL (CoC)'] - df_non_total['NET PUT (CoC)']
-        df_non_total['Option ROC'] = df_non_total.groupby('Client Type')['NET DIFF'].diff(periods=-1)
-        df.loc[non_total_mask, ['NET CALL (CoC)', 'NET PUT (CoC)', 'NET DIFF', 'Option ROC']] = df_non_total[['NET CALL (CoC)', 'NET PUT (CoC)', 'NET DIFF', 'Option ROC']]
+    # Change of Character (CoC) and ROC - Applies to ALL rows (Client, DII, FII, Pro, TOTAL)
+    # Using groupby('Client Type') ensures we compare Client vs Client, Total vs Total
+    df['NET CALL (CoC)'] = df.groupby('Client Type')['Abs Change Call'].diff(periods=-1)
+    df['NET PUT (CoC)'] = df.groupby('Client Type')['Abs Change Put'].diff(periods=-1)
+    df['NET DIFF'] = df['NET CALL (CoC)'] - df['NET PUT (CoC)']
+    df['Option ROC'] = df.groupby('Client Type')['NET DIFF'].diff(periods=-1)
 
     # --- SECTION: FUTURE INDEX ---
     df['Future Net'] = df['Future Index Long'] - df['Future Index Short']
     
-    # Initialize diff columns
-    df['Future ROC'] = float('nan')
-    df['Fut Abs Chg Long'] = float('nan')
-    df['Fut Abs Chg Short'] = float('nan')
-    df['Fut Long %'] = float('nan')
-    df['Fut Short %'] = float('nan')
+    # Diff columns
+    df['Future ROC'] = df.groupby('Client Type')['Future Net'].diff(periods=-1)
+    df['Fut Abs Chg Long'] = df.groupby('Client Type')['Future Index Long'].diff(periods=-1)
+    df['Fut Abs Chg Short'] = df.groupby('Client Type')['Future Index Short'].diff(periods=-1)
     
-    if non_total_mask.any():
-        df_non_total = df[non_total_mask].copy()
-        df_non_total['Future ROC'] = df_non_total.groupby('Client Type')['Future Net'].diff(periods=-1)
-        df_non_total['Fut Abs Chg Long'] = df_non_total.groupby('Client Type')['Future Index Long'].diff(periods=-1)
-        df_non_total['Fut Abs Chg Short'] = df_non_total.groupby('Client Type')['Future Index Short'].diff(periods=-1)
-        
-        # % Changes
-        prev_fut_long = df_non_total.groupby('Client Type')['Future Index Long'].shift(-1)
-        df_non_total['Fut Long %'] = (df_non_total['Fut Abs Chg Long'] / prev_fut_long) * 100
-        prev_fut_short = df_non_total.groupby('Client Type')['Future Index Short'].shift(-1)
-        df_non_total['Fut Short %'] = (df_non_total['Fut Abs Chg Short'] / prev_fut_short) * 100
-        
-        df.loc[non_total_mask, ['Future ROC', 'Fut Abs Chg Long', 'Fut Abs Chg Short', 'Fut Long %', 'Fut Short %']] = df_non_total[['Future ROC', 'Fut Abs Chg Long', 'Fut Abs Chg Short', 'Fut Long %', 'Fut Short %']]
+    # % Changes (New - Old) / Old
+    prev_fut_long = df.groupby('Client Type')['Future Index Long'].shift(-1)
+    df['Fut Long %'] = (df['Fut Abs Chg Long'] / prev_fut_long) * 100
     
-    # L/S Ratio - applies to all rows including TOTAL
+    prev_fut_short = df.groupby('Client Type')['Future Index Short'].shift(-1)
+    df['Fut Short %'] = (df['Fut Abs Chg Short'] / prev_fut_short) * 100
+    
+    # L/S Ratio 
     df['Fut L/S Ratio'] = df.apply(
         lambda x: x['Future Index Long'] / x['Future Index Short'] if x['Future Index Short'] != 0 else 0, 
         axis=1
@@ -117,27 +98,19 @@ def process_data(df, current_nifty_spot):
     # --- SECTION: FUTURE STOCK ---
     df['Stk Fut Net'] = df['Future Stock Long'] - df['Future Stock Short']
     
-    # Initialize diff columns
-    df['Stk Fut ROC'] = float('nan')
-    df['Stk Abs Chg Long'] = float('nan')
-    df['Stk Abs Chg Short'] = float('nan')
-    df['Stk Long %'] = float('nan')
-    df['Stk Short %'] = float('nan')
+    # Diff columns
+    df['Stk Fut ROC'] = df.groupby('Client Type')['Stk Fut Net'].diff(periods=-1)
+    df['Stk Abs Chg Long'] = df.groupby('Client Type')['Future Stock Long'].diff(periods=-1)
+    df['Stk Abs Chg Short'] = df.groupby('Client Type')['Future Stock Short'].diff(periods=-1)
     
-    if non_total_mask.any():
-        df_non_total = df[non_total_mask].copy()
-        df_non_total['Stk Fut ROC'] = df_non_total.groupby('Client Type')['Stk Fut Net'].diff(periods=-1)
-        df_non_total['Stk Abs Chg Long'] = df_non_total.groupby('Client Type')['Future Stock Long'].diff(periods=-1)
-        df_non_total['Stk Abs Chg Short'] = df_non_total.groupby('Client Type')['Future Stock Short'].diff(periods=-1)
-        
-        prev_stk_long = df_non_total.groupby('Client Type')['Future Stock Long'].shift(-1)
-        df_non_total['Stk Long %'] = (df_non_total['Stk Abs Chg Long'] / prev_stk_long) * 100
-        prev_stk_short = df_non_total.groupby('Client Type')['Future Stock Short'].shift(-1)
-        df_non_total['Stk Short %'] = (df_non_total['Stk Abs Chg Short'] / prev_stk_short) * 100
-        
-        df.loc[non_total_mask, ['Stk Fut ROC', 'Stk Abs Chg Long', 'Stk Abs Chg Short', 'Stk Long %', 'Stk Short %']] = df_non_total[['Stk Fut ROC', 'Stk Abs Chg Long', 'Stk Abs Chg Short', 'Stk Long %', 'Stk Short %']]
+    # % Changes
+    prev_stk_long = df.groupby('Client Type')['Future Stock Long'].shift(-1)
+    df['Stk Long %'] = (df['Stk Abs Chg Long'] / prev_stk_long) * 100
     
-    # L/S Ratio - applies to all rows including TOTAL
+    prev_stk_short = df.groupby('Client Type')['Future Stock Short'].shift(-1)
+    df['Stk Short %'] = (df['Stk Abs Chg Short'] / prev_stk_short) * 100
+    
+    # L/S Ratio
     df['Stk L/S Ratio'] = df.apply(
         lambda x: x['Future Stock Long'] / x['Future Stock Short'] if x['Future Stock Short'] != 0 else 0, 
         axis=1
@@ -148,14 +121,16 @@ def process_data(df, current_nifty_spot):
 
     # --- SECTION: FUTURE RATIOS ---
     # Get total for each date (from TOTAL row)
+    # Improved Total row detection
     is_total_row = df['Client Type'].str.strip().str.upper().isin(['TOTAL', 'TOTALS', 'GRAND TOTAL'])
     total_long_per_date = df[is_total_row].groupby('Date')['Future Index Long'].first()
     total_short_per_date = df[is_total_row].groupby('Date')['Future Index Short'].first()
     
-    # If no TOTAL row, calculate from sum of non-TOTAL rows
+    # If no TOTAL row found, calculate from sum of non-TOTAL rows
+    non_total_rows = ~is_total_row
     if total_long_per_date.empty:
-        total_long_per_date = df[non_total_mask].groupby('Date')['Future Index Long'].sum()
-        total_short_per_date = df[non_total_mask].groupby('Date')['Future Index Short'].sum()
+        total_long_per_date = df[non_total_rows].groupby('Date')['Future Index Long'].sum()
+        total_short_per_date = df[non_total_rows].groupby('Date')['Future Index Short'].sum()
     
     # Map totals back to dataframe
     df['_total_long'] = df['Date'].map(total_long_per_date)
