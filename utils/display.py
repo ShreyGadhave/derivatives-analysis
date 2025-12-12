@@ -421,8 +421,8 @@ def generate_calendar_html(available_dates):
         dt_index = pd.to_datetime(available_dates, errors='coerce')
         # Filter out NaT and sort
         dates = dt_index[dt_index.notna()].sort_values()
-    except Exception:
-        return "<div>Error processing dates</div>"
+    except Exception as e:
+        return f"<div>Error processing dates: {str(e)}</div>"
 
     if dates.empty:
         return "<div>No valid dates</div>"
