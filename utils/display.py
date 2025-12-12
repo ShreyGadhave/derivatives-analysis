@@ -437,52 +437,69 @@ def generate_calendar_html(available_dates):
         .calendar-container {
             display: flex;
             flex-wrap: wrap;
-            gap: 15px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            justify-content: flex-end; /* Align right */
+            gap: 12px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            justify-content: center; /* Center align */
+            padding: 5px;
         }
         .month-card {
-            background: #fff;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 10px;
-            width: 220px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            background: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 8px;
+            width: 180px; /* Compact width */
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+        }
+        .month-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         .month-title {
             text-align: center;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 8px;
-            font-size: 0.9em;
+            font-weight: 700;
+            color: #444;
+            margin-bottom: 6px;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
             text-transform: uppercase;
+            border-bottom: 1px solid #f0f0f0;
+            padding-bottom: 4px;
         }
         .days-grid {
             display: grid;
             grid-template-columns: repeat(7, 1fr);
             gap: 2px;
             text-align: center;
-            font-size: 0.75em;
+            font-size: 0.7em;
         }
         .day-header {
-            color: #888;
+            color: #999;
             font-weight: 600;
-            padding-bottom: 4px;
+            padding-bottom: 2px;
+            font-size: 0.9em;
         }
         .day-cell {
             aspect-ratio: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 4px;
-            color: #ccc; /* Default inactive color */
-            background: #f9f9f9;
+            border-radius: 3px;
+            color: #d0d0d0;
+            background: #f8f9fa;
+            cursor: default;
+            font-size: 0.95em;
         }
         .day-cell.active {
-            background-color: #28a745; /* Green for uploaded */
+            background-color: #2ej863; /* Fallback */
+            background-color: #22c55e; /* Vibrant Green */
             color: white;
             font-weight: bold;
-            box-shadow: 0 1px 2px rgba(40, 167, 69, 0.3);
+            box-shadow: 0 1px 2px rgba(34, 197, 94, 0.4);
+        }
+        .day-cell.active:hover {
+            background-color: #16a34a; /* Darker Green on Hover */
+            transform: scale(1.1);
         }
         .day-cell.empty {
             background: transparent;

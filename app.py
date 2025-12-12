@@ -247,6 +247,7 @@ if st.sidebar.button("Submit & Process"):
                 save_database(combined_df, use_cloud=st.session_state.get('use_cloud_db', False))
                 st.session_state['data'] = combined_df
                 st.success(f"✅ Data for {len(new_dates)} date(s) processed and saved successfully!")
+                st.rerun()
             else:
                 st.error("❌ Could not find 'Date' or 'Client Type' columns. Check file format.")
     else:
