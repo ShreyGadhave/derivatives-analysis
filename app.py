@@ -239,6 +239,56 @@ if st.sidebar.button("Submit & Process"):
                                     prev_val = prev_row.get('Nifty Spot', float('nan'))
                                     if pd.notna(prev_val) and pd.notna(new_val):
                                         new_processed.loc[new_mask, 'Nifty Diff'] = new_val - prev_val
+                                
+                                # --- FUTURE ABS CHANGE ---
+                                # Fut Abs Chg Long
+                                if 'Future Index Long' in raw_df.columns:
+                                    prev_fut_long = prev_row.get('Future Index Long', float('nan'))
+                                    if pd.isna(prev_fut_long):
+                                        prev_fut_long = prev_row.get('Fut Abs Chg Long', float('nan'))  # Try from old calc
+                                    new_fut_long = raw_df.loc[raw_df['Client Type'] == client_type, 'Future Index Long'].iloc[0] if (raw_df['Client Type'] == client_type).any() else float('nan')
+                                    if pd.notna(prev_fut_long) and pd.notna(new_fut_long):
+                                        new_processed.loc[new_mask, 'Fut Abs Chg Long'] = new_fut_long - prev_fut_long
+                                        # Fut Long %
+                                        if prev_fut_long != 0:
+                                            new_processed.loc[new_mask, 'Fut Long %'] = ((new_fut_long - prev_fut_long) / prev_fut_long) * 100
+                                
+                                # Fut Abs Chg Short
+                                if 'Future Index Short' in raw_df.columns:
+                                    prev_fut_short = prev_row.get('Future Index Short', float('nan'))
+                                    if pd.isna(prev_fut_short):
+                                        prev_fut_short = prev_row.get('Fut Abs Chg Short', float('nan'))
+                                    new_fut_short = raw_df.loc[raw_df['Client Type'] == client_type, 'Future Index Short'].iloc[0] if (raw_df['Client Type'] == client_type).any() else float('nan')
+                                    if pd.notna(prev_fut_short) and pd.notna(new_fut_short):
+                                        new_processed.loc[new_mask, 'Fut Abs Chg Short'] = new_fut_short - prev_fut_short
+                                        # Fut Short %
+                                        if prev_fut_short != 0:
+                                            new_processed.loc[new_mask, 'Fut Short %'] = ((new_fut_short - prev_fut_short) / prev_fut_short) * 100
+                                
+                                # --- FUTURE STOCK ABS CHANGE ---
+                                # Stk Abs Chg Long
+                                if 'Future Stock Long' in raw_df.columns:
+                                    prev_stk_long = prev_row.get('Future Stock Long', float('nan'))
+                                    if pd.isna(prev_stk_long):
+                                        prev_stk_long = prev_row.get('Stk Abs Chg Long', float('nan'))
+                                    new_stk_long = raw_df.loc[raw_df['Client Type'] == client_type, 'Future Stock Long'].iloc[0] if (raw_df['Client Type'] == client_type).any() else float('nan')
+                                    if pd.notna(prev_stk_long) and pd.notna(new_stk_long):
+                                        new_processed.loc[new_mask, 'Stk Abs Chg Long'] = new_stk_long - prev_stk_long
+                                        # Stk Long %
+                                        if prev_stk_long != 0:
+                                            new_processed.loc[new_mask, 'Stk Long %'] = ((new_stk_long - prev_stk_long) / prev_stk_long) * 100
+                                
+                                # Stk Abs Chg Short
+                                if 'Future Stock Short' in raw_df.columns:
+                                    prev_stk_short = prev_row.get('Future Stock Short', float('nan'))
+                                    if pd.isna(prev_stk_short):
+                                        prev_stk_short = prev_row.get('Stk Abs Chg Short', float('nan'))
+                                    new_stk_short = raw_df.loc[raw_df['Client Type'] == client_type, 'Future Stock Short'].iloc[0] if (raw_df['Client Type'] == client_type).any() else float('nan')
+                                    if pd.notna(prev_stk_short) and pd.notna(new_stk_short):
+                                        new_processed.loc[new_mask, 'Stk Abs Chg Short'] = new_stk_short - prev_stk_short
+                                        # Stk Short %
+                                        if prev_stk_short != 0:
+                                            new_processed.loc[new_mask, 'Stk Short %'] = ((new_stk_short - prev_stk_short) / prev_stk_short) * 100
                     
                     # Combine new + old
                     combined_df = pd.concat([new_processed, existing_df], ignore_index=True)
